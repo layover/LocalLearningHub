@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 
 export default function ContactsSidebar() {
   const { user, logoutMutation } = useAuth();
-  const { contacts, selectContact, selectedContact, pendingFriendRequests } = useChat();
+  const { contacts, selectContact, selectedContact, pendingFriendRequests, respondToFriendRequest } = useChat();
   const [showAddContact, setShowAddContact] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -106,7 +106,7 @@ export default function ContactsSidebar() {
                     className="flex-1"
                     onClick={() => {
                       console.log("接受好友请求:", request.id);
-                      useChat().respondToFriendRequest(request.id, 'accepted');
+                      respondToFriendRequest(request.id, 'accepted');
                     }}
                   >
                     <Check className="h-3 w-3 mr-1" />
@@ -118,7 +118,7 @@ export default function ContactsSidebar() {
                     className="flex-1"
                     onClick={() => {
                       console.log("拒绝好友请求:", request.id);
-                      useChat().respondToFriendRequest(request.id, 'rejected');
+                      respondToFriendRequest(request.id, 'rejected');
                     }}
                   >
                     <X className="h-3 w-3 mr-1" />

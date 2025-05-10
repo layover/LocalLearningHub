@@ -259,13 +259,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Respond to a friend request
   app.put('/api/friend-requests/:id', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
+    console.log(`收到好友请求响应: ID=${req.params.id}, 状态=${req.body.status}`);
+    
+    if (!req.isAuthenticated()) {
+      console.log('未授权的请求');
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
     
     const userId = req.user!.id;
     const requestId = parseInt(req.params.id);
     const { status } = req.body; // 'accepted' or 'rejected'
     
+    console.log(`用户 ${userId} 正在响应好友请求 ${requestId} 为 ${status}`);
+    
     if (!['accepted', 'rejected'].includes(status)) {
+      console.log(`无效的状态: ${status}`);
       return res.status(400).json({ message: 'Invalid status. Must be "accepted" or "rejected"' });
     }
     
@@ -273,41 +281,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const friendRequest = await storage.getFriendRequestById(requestId);
     
     if (!friendRequest) {
+      console.log(`找不到好友请求 ${requestId}`);
       return res.status(404).json({ message: 'Friend request not found' });
     }
     
+    console.log(`已找到好友请求:`, friendRequest);
+    
     // Check if the current user is the receiver of the request
     if (friendRequest.receiverId !== userId) {
+      console.log(`用户 ${userId} 不是请求的接收者 (${friendRequest.receiverId})`);
       return res.status(403).json({ message: 'You can only respond to friend requests sent to you' });
     }
     
     // Check if request is already handled
     if (friendRequest.status !== 'pending') {
+      console.log(`好友请求已经被处理为 ${friendRequest.status}`);
       return res.status(400).json({ message: `Friend request is already ${friendRequest.status}` });
     }
     
-    // Update request status
-    const updatedRequest = await storage.updateFriendRequestStatus(requestId, status);
-    
-    // If accepted, add both users to each other's contacts
-    if (status === 'accepted') {
-      await storage.addContact(friendRequest.senderId, friendRequest.receiverId);
-      await storage.addContact(friendRequest.receiverId, friendRequest.senderId);
+    try {
+      console.log(`更新好友请求 ${requestId} 状态为 ${status}`);
+      // Update request status
+      const updatedRequest = await storage.updateFriendRequestStatus(requestId, status);
+      console.log(`请求状态已更新:`, updatedRequest);
+      
+      // If accepted, add both users to each other's contacts
+      if (status === 'accepted') {
+        console.log(`接受请求，添加双向联系人关系: ${friendRequest.senderId} <-> ${friendRequest.receiverId}`);
+        await storage.addContact(friendRequest.senderId, friendRequest.receiverId);
+        await storage.addContact(friendRequest.receiverId, friendRequest.senderId);
+      }
+      
+      // Notify the sender through WebSocket if they're online
+      const senderSocket = storage.getConnection(friendRequest.senderId);
+      console.log(`发送者 ${friendRequest.senderId} 是否在线:`, !!senderSocket);
+      
+      if (senderSocket && senderSocket.readyState === WebSocket.OPEN) {
+        console.log(`正在通知发送者 ${friendRequest.senderId} 请求已被${status}`);
+        
+        const message = {
+          type: 'friend_request_response',
+          requestId: friendRequest.id,
+          senderId: friendRequest.senderId,
+          receiverId: friendRequest.receiverId,
+          status
+        };
+        
+        try {
+          senderSocket.send(JSON.stringify(message));
+          console.log("通知已发送");
+        } catch (error) {
+          console.error("发送WebSocket通知时出错:", error);
+        }
+      }
+      
+      console.log(`响应好友请求 ${requestId} 成功`);
+      res.json(updatedRequest);
+    } catch (error) {
+      console.error(`处理好友请求时出错:`, error);
+      res.status(500).json({ message: 'Failed to process friend request' });
     }
-    
-    // Notify the sender through WebSocket if they're online
-    const senderSocket = storage.getConnection(friendRequest.senderId);
-    if (senderSocket && senderSocket.readyState === WebSocket.OPEN) {
-      senderSocket.send(JSON.stringify({
-        type: 'friend_request_response',
-        requestId: friendRequest.id,
-        senderId: friendRequest.senderId,
-        receiverId: friendRequest.receiverId,
-        status
-      }));
-    }
-    
-    res.json(updatedRequest);
   });
   
   // Get messages between user and contact

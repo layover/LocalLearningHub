@@ -315,30 +315,42 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   
   // Respond to friend request
   const respondToFriendRequest = useCallback(async (requestId: number, status: 'accepted' | 'rejected') => {
+    console.log(`开始处理好友请求 ${requestId}, 状态: ${status}`);
+    
     try {
-      await apiRequest('PUT', `/api/friend-requests/${requestId}`, { status });
+      // 确认请求存在于我们的列表中
+      const requestExists = pendingFriendRequests.some(req => req.id === requestId);
+      if (!requestExists) {
+        console.error(`好友请求 ${requestId} 不存在于pendingFriendRequests列表中:`, pendingFriendRequests);
+        throw new Error("请求不存在或已被处理");
+      }
+      
+      console.log(`发送API请求到 /api/friend-requests/${requestId}`);
+      const response = await apiRequest('PUT', `/api/friend-requests/${requestId}`, { status });
+      console.log("服务器响应:", response);
       
       // Update local state
       setPendingFriendRequests(prev => prev.filter(req => req.id !== requestId));
       
-      // Refresh contacts list if request was accepted
-      if (status === 'accepted') {
-        queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      }
+      // 强制重新获取好友请求列表和联系人列表
+      queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       
       toast({
         title: status === 'accepted' ? "好友请求已接受" : "好友请求已拒绝",
         description: status === 'accepted' ? "您已添加该用户为好友" : "您已拒绝该用户的好友请求"
       });
       
+      console.log(`好友请求 ${requestId} 已被${status === 'accepted' ? '接受' : '拒绝'}`);
     } catch (error) {
+      console.error("处理好友请求时出错:", error);
       toast({
         title: "操作失败",
         description: (error as Error).message || "请稍后重试",
         variant: "destructive"
       });
     }
-  }, [queryClient, toast]);
+  }, [queryClient, toast, pendingFriendRequests]);
 
   return (
     <ChatContext.Provider value={{
