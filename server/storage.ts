@@ -266,19 +266,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContacts(userId: number): Promise<{ contact: User, unreadCount: number }[]> {
-    const userContacts = await db.select().from(contacts)
-      .where(eq(contacts.userId, userId));
+    console.log(`获取用户 ${userId} 的联系人列表`);
     
-    const results = [];
-    for (const contact of userContacts) {
-      const user = await this.getUser(contact.contactId);
-      if (user) {
+    try {
+      // 直接查询contacts表
+      const userContacts = await db.select().from(contacts)
+        .where(eq(contacts.userId, userId));
+      
+      console.log(`从数据库查询到 ${userContacts.length} 个联系人关系:`, 
+        userContacts.map(c => `联系人ID=${c.contactId}`));
+      
+      // 遍历每个联系人获取详细信息
+      const results = [];
+      for (const contact of userContacts) {
+        console.log(`正在获取联系人 ${contact.contactId} 的详细信息`);
+        const user = await this.getUser(contact.contactId);
+        
+        if (!user) {
+          console.log(`警告: 找不到ID为 ${contact.contactId} 的用户信息`);
+          continue;
+        }
+        
+        console.log(`成功获取联系人 ${contact.contactId} (${user.username}) 的信息`);
         const unreadCount = await this.getUnreadMessageCount(userId, contact.contactId);
-        results.push({ contact: user, unreadCount });
+        results.push({ 
+          contact: user, 
+          unreadCount 
+        });
       }
+      
+      console.log(`用户 ${userId} 总共有 ${results.length} 个联系人`);
+      return results;
+    } catch (error) {
+      console.error(`获取联系人列表时出错:`, error);
+      throw error;
     }
-    
-    return results;
   }
 
   async addContact(userId: number, contactId: number): Promise<Contact> {

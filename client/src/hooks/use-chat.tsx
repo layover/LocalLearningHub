@@ -31,9 +31,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [pendingFriendRequests, setPendingFriendRequests] = useState<any[]>([]);
 
   // Fetch contacts for the current user
-  const { data: contacts = [], isLoading } = useQuery<Contact[]>({
+  const { data: contacts = [], isLoading, refetch: refetchContacts } = useQuery<Contact[]>({
     queryKey: ['/api/contacts'],
     enabled: !!user,
+    refetchInterval: 15000, // 每15秒刷新一次联系人列表
   });
   
   // Fetch pending friend requests
@@ -363,9 +364,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // Update local state - 无论本地列表是否包含此请求，都尝试删除
       setPendingFriendRequests(prev => prev.filter(req => req.id !== requestId));
       
-      // 强制重新获取好友请求列表和联系人列表
+      // 强制重新获取好友请求列表
       queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      
+      // 强制重新获取联系人列表并手动触发刷新
+      if (status === 'accepted') {
+        console.log("请求已接受，强制刷新联系人列表");
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+        
+        // 手动触发联系人刷新
+        setTimeout(() => {
+          refetchContacts(); 
+          console.log("已发起联系人列表手动刷新");
+        }, 500);
+      }
       
       // 通知用户
       toast({
