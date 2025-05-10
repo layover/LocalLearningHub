@@ -107,8 +107,11 @@ export default function ContactsSidebar() {
                     variant="default" 
                     className="flex-1"
                     onClick={() => {
-                      console.log("接受好友请求:", request.id);
-                      respondToFriendRequest(request.id, 'accepted');
+                      console.log("接受好友请求:", request);
+                      // 使用setTimeout确保函数在最新的渲染周期之后执行
+                      setTimeout(() => {
+                        respondToFriendRequest(request.id, 'accepted');
+                      }, 0);
                     }}
                   >
                     <Check className="h-3 w-3 mr-1" />
@@ -119,8 +122,11 @@ export default function ContactsSidebar() {
                     variant="outline" 
                     className="flex-1"
                     onClick={() => {
-                      console.log("拒绝好友请求:", request.id);
-                      respondToFriendRequest(request.id, 'rejected');
+                      console.log("拒绝好友请求:", request);
+                      // 使用setTimeout确保函数在最新的渲染周期之后执行
+                      setTimeout(() => {
+                        respondToFriendRequest(request.id, 'rejected');
+                      }, 0);
                     }}
                   >
                     <X className="h-3 w-3 mr-1" />
