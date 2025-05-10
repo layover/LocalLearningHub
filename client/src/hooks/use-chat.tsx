@@ -40,6 +40,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const { data: friendRequests = [] } = useQuery({
     queryKey: ['/api/friend-requests/pending'],
     enabled: !!user,
+    refetchInterval: 30000, // 每30秒自动刷新一次
+    onSuccess: (data) => {
+      console.log("获取到待处理好友请求:", data);
+      if (Array.isArray(data)) {
+        setPendingFriendRequests(data);
+      }
+    }
   });
   
   // 移除this effect，直接使用friendRequests
@@ -119,30 +126,35 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               
             case 'friend_request':
               if (data.request) {
-                console.log("收到好友请求:", data.request);
-                // Invalidate pending friend requests query to refresh the list
+                console.log("收到好友请求详情:", JSON.stringify(data.request));
+                // 无论如何首先刷新好友请求列表
                 queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
                 
-                // Display notification with sender info
-                if (data.request.sender) {
-                  console.log("请求中包含发送者信息:", data.request.sender);
-                  toast({
-                    title: "收到好友请求",
-                    description: `${data.request.sender.displayName || data.request.sender.username || '用户'} 想要添加您为好友`,
-                  });
-                } else {
-                  // If we don't have sender info in the notification, we'll try to fetch sender details
-                  console.log("请求中不包含发送者信息，正在尝试获取发送者详情");
-                  
-                  // Show generic notification immediately
-                  toast({
-                    title: "收到好友请求",
-                    description: `收到新的好友请求，请查看通知栏`,
-                  });
-                  
-                  // Force refresh the pending requests data
-                  queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
+                // 尝试安全地访问sender属性
+                let senderName = "用户";
+                try {
+                  // 如果sender存在且有displayName或username属性
+                  if (data.request.sender && 
+                      (data.request.sender.displayName || data.request.sender.username)) {
+                    console.log("请求中包含发送者信息:", data.request.sender);
+                    senderName = data.request.sender.displayName || data.request.sender.username;
+                  } else {
+                    console.log("请求中不包含完整的发送者信息");
+                  }
+                } catch (error) {
+                  console.error("处理好友请求发送者信息时出错:", error);
                 }
+                
+                // 显示好友请求通知
+                toast({
+                  title: "收到好友请求",
+                  description: `${senderName} 想要添加您为好友`,
+                });
+                
+                // 强制重新加载数据以确保UI更新
+                setTimeout(() => {
+                  queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
+                }, 500);
               }
               break;
               

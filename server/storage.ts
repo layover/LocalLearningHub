@@ -78,17 +78,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFriendRequestById(id: number): Promise<FriendRequest | undefined> {
-    const result = await db.select().from(friendRequests).where(eq(friendRequests.id, id));
-    return result.length > 0 ? result[0] : undefined;
+    console.log(`获取好友请求详情 - 请求ID: ${id}`);
+    try {
+      const result = await db.select().from(friendRequests).where(eq(friendRequests.id, id));
+      
+      if (result.length === 0) {
+        console.log(`未找到好友请求 ID: ${id}`);
+        return undefined;
+      }
+      
+      console.log(`好友请求 ID ${id} 详情:`, result[0]);
+      return result[0];
+    } catch (error) {
+      console.error(`获取好友请求详情时出错:`, error);
+      throw error;
+    }
   }
 
   async getPendingFriendRequests(userId: number): Promise<FriendRequest[]> {
-    return await db.select().from(friendRequests).where(
-      and(
-        eq(friendRequests.receiverId, userId),
-        eq(friendRequests.status, 'pending')
-      )
-    );
+    console.log(`获取用户 ${userId} 的待处理好友请求`);
+    try {
+      const result = await db.select().from(friendRequests).where(
+        and(
+          eq(friendRequests.receiverId, userId),
+          eq(friendRequests.status, 'pending')
+        )
+      );
+      
+      console.log(`用户 ${userId} 有 ${result.length} 个待处理好友请求:`, result);
+      return result;
+    } catch (error) {
+      console.error(`获取待处理好友请求时出错:`, error);
+      throw error;
+    }
   }
 
   async createFriendRequest(request: InsertFriendRequest): Promise<FriendRequest> {
@@ -100,11 +122,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateFriendRequestStatus(id: number, status: string): Promise<FriendRequest | undefined> {
-    const result = await db.update(friendRequests)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(friendRequests.id, id))
-      .returning();
-    return result.length > 0 ? result[0] : undefined;
+    console.log(`更新好友请求状态 - 请求ID: ${id}, 新状态: ${status}`);
+    try {
+      // 首先确认此请求存在
+      const existingRequest = await this.getFriendRequestById(id);
+      if (!existingRequest) {
+        console.error(`无法更新好友请求状态 - 请求ID ${id} 不存在`);
+        return undefined;
+      }
+      
+      console.log(`当前请求状态: ${existingRequest.status}, 更新为: ${status}`);
+      
+      // 执行更新
+      const result = await db.update(friendRequests)
+        .set({ 
+          status, 
+          updatedAt: new Date() 
+        })
+        .where(eq(friendRequests.id, id))
+        .returning();
+      
+      if (result.length === 0) {
+        console.error(`更新失败 - 没有记录被更新, 请求ID: ${id}`);
+        return undefined;
+      }
+      
+      console.log(`请求状态已成功更新为 ${status}:`, result[0]);
+      return result[0];
+    } catch (error) {
+      console.error(`更新好友请求状态时出错:`, error);
+      throw error;
+    }
   }
 
   // Get all users

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 export default function ContactsSidebar() {
   const { user, logoutMutation } = useAuth();
   const { contacts, selectContact, selectedContact, pendingFriendRequests, respondToFriendRequest } = useChat();
+  
+  console.log("当前待处理好友请求:", pendingFriendRequests);
   const [showAddContact, setShowAddContact] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
