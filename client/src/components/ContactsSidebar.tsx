@@ -86,55 +86,68 @@ export default function ContactsSidebar() {
             待处理好友请求 ({pendingFriendRequests.length})
           </h3>
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {pendingFriendRequests.map((request: any) => (
-              <div key={request.id} className="flex flex-col bg-white rounded-md p-2 shadow-sm border">
-                <div className="flex items-center mb-2">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-2">
-                    {request.sender.avatar ? (
-                      <img src={request.sender.avatar} alt={request.sender.displayName} className="h-8 w-8 rounded-full object-cover" />
-                    ) : (
-                      request.sender.displayName.charAt(0).toUpperCase()
-                    )}
+            {pendingFriendRequests.map((request: any) => {
+              console.log("显示好友请求", request);
+              // 检查请求是否有sender字段
+              const hasSender = request && request.sender && 
+                (request.sender.displayName || request.sender.username);
+              
+              // 设置显示的名称和头像
+              const displayName = hasSender ? request.sender.displayName : `用户${request.senderId}`;
+              const username = hasSender ? request.sender.username : `user${request.senderId}`;
+              const avatar = hasSender && request.sender.avatar ? request.sender.avatar : null;
+              
+              return (
+                <div key={request.id} className="flex flex-col bg-white rounded-md p-2 shadow-sm border">
+                  <div className="flex items-center mb-2">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-2">
+                      {avatar ? (
+                        <img src={avatar} alt={displayName} className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        displayName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-sm font-medium truncate">{displayName}</p>
+                      <p className="text-xs text-gray-500 truncate">@{username}</p>
+                    </div>
                   </div>
-                  <div className="overflow-hidden">
-                    <p className="text-sm font-medium truncate">{request.sender.displayName}</p>
-                    <p className="text-xs text-gray-500 truncate">@{request.sender.username}</p>
+                  
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="default" 
+                      className="flex-1"
+                      onClick={() => {
+                        console.log("接受好友请求:", request);
+                        // 使用setTimeout确保函数在最新的渲染周期之后执行
+                        setTimeout(() => {
+                          respondToFriendRequest(request.id, 'accepted');
+                        }, 0);
+                      }}
+                    >
+                      <Check className="h-3 w-3 mr-1" />
+                      接受
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        console.log("拒绝好友请求:", request);
+                        // 使用setTimeout确保函数在最新的渲染周期之后执行
+                        setTimeout(() => {
+                          respondToFriendRequest(request.id, 'rejected');
+                        }, 0);
+                      }}
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      拒绝
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="default" 
-                    className="flex-1"
-                    onClick={() => {
-                      console.log("接受好友请求:", request);
-                      // 使用setTimeout确保函数在最新的渲染周期之后执行
-                      setTimeout(() => {
-                        respondToFriendRequest(request.id, 'accepted');
-                      }, 0);
-                    }}
-                  >
-                    <Check className="h-3 w-3 mr-1" />
-                    接受
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      console.log("拒绝好友请求:", request);
-                      // 使用setTimeout确保函数在最新的渲染周期之后执行
-                      setTimeout(() => {
-                        respondToFriendRequest(request.id, 'rejected');
-                      }, 0);
-                    }}
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    拒绝
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

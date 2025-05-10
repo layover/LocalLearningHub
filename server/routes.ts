@@ -239,22 +239,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Get pending friend requests
   app.get('/api/friend-requests/pending', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
+    console.log('获取待处理好友请求 - 认证状态:', req.isAuthenticated());
     
-    const userId = req.user!.id;
-    const pendingRequests = await storage.getPendingFriendRequests(userId);
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
     
-    // Fetch sender details for each request
-    const requestsWithSenders = await Promise.all(pendingRequests.map(async (request) => {
-      const sender = await storage.getUser(request.senderId);
-      const { password: _, ...safeSender } = sender!;
-      return {
-        ...request,
-        sender: safeSender
-      };
-    }));
-    
-    res.json(requestsWithSenders);
+    try {
+      const userId = req.user!.id;
+      console.log(`用户${userId}请求获取待处理好友请求列表`);
+      
+      // 直接从数据库获取所有待处理请求(receiver=当前用户且status=pending)
+      const pendingRequests = await db.select().from(friendRequests).where(
+        and(
+          eq(friendRequests.receiverId, userId),
+          eq(friendRequests.status, 'pending')
+        )
+      );
+      
+      console.log(`查询到${pendingRequests.length}个待处理请求:`, pendingRequests);
+      
+      // 获取每个请求发送者的信息
+      const requestsWithSenders = await Promise.all(pendingRequests.map(async (request) => {
+        console.log(`正在获取请求${request.id}的发送者${request.senderId}信息`);
+        const sender = await storage.getUser(request.senderId);
+        
+        if (!sender) {
+          console.log(`未找到发送者${request.senderId}的信息`);
+          return {
+            ...request,
+            sender: { 
+              id: request.senderId,
+              username: `user${request.senderId}`,
+              displayName: `用户${request.senderId}`,
+              isOnline: false
+            }
+          };
+        }
+        
+        // 确保不返回密码字段
+        const { password: _, ...safeSender } = sender;
+        console.log(`发送者${request.senderId}信息:`, safeSender);
+        
+        return {
+          ...request,
+          sender: safeSender
+        };
+      }));
+      
+      console.log(`返回${requestsWithSenders.length}个待处理请求(带发送者信息)`);
+      res.json(requestsWithSenders);
+    } catch (error) {
+      console.error('获取待处理好友请求时出错:', error);
+      res.status(500).json({ message: '获取待处理好友请求失败' });
+    }
   });
   
   // Respond to a friend request
