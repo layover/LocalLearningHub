@@ -125,18 +125,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 
                 // Display notification with sender info
                 if (data.request.sender) {
+                  console.log("请求中包含发送者信息:", data.request.sender);
                   toast({
                     title: "收到好友请求",
                     description: `${data.request.sender.displayName || data.request.sender.username || '用户'} 想要添加您为好友`,
                   });
                 } else {
-                  // Fallback if sender info is not included
+                  // If we don't have sender info in the notification, we'll try to fetch sender details
+                  console.log("请求中不包含发送者信息，正在尝试获取发送者详情");
+                  
+                  // Show generic notification immediately
                   toast({
                     title: "收到好友请求",
-                    description: `有用户想要添加您为好友`,
+                    description: `收到新的好友请求，请查看通知栏`,
                   });
                   
-                  console.log("好友请求中无发送者信息");
+                  // Force refresh the pending requests data
+                  queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
                 }
               }
               break;
