@@ -128,24 +128,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(contacts);
   });
   
-  // Add a contact
-  app.post('/api/contacts', async (req, res) => {
+  // Send a friend request
+  app.post('/api/friend-requests', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
     
-    const userId = req.user!.id;
-    const { contactId } = req.body;
+    const senderId = req.user!.id;
+    const { receiverId } = req.body;
     
-    if (!contactId || typeof contactId !== 'number') {
-      return res.status(400).json({ message: 'Invalid contact ID' });
+    if (!receiverId || typeof receiverId !== 'number') {
+      return res.status(400).json({ message: 'Invalid receiver ID' });
     }
     
-    const contactUser = await storage.getUser(contactId);
-    if (!contactUser) {
+    // Verify receiver exists
+    const receiverUser = await storage.getUser(receiverId);
+    if (!receiverUser) {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    const contact = await storage.addContact(userId, contactId);
-    res.status(201).json(contact);
+    // Check if a friend request already exists
+    const existingRequests = await storage.getFriendRequests(senderId);
+    const hasPendingRequest = existingRequests.some(
+      req => (req.senderId === senderId && req.receiverId === receiverId ||
+             req.senderId === receiverId && req.receiverId === senderId) && 
+             req.status === 'pending'
+    );
+    
+    if (hasPendingRequest) {
+      return res.status(400).json({ message: 'A pending friend request already exists' });
+    }
+    
+    // Check if they are already friends
+    const contacts = await storage.getContacts(senderId);
+    const isAlreadyFriend = contacts.some(c => c.contact.id === receiverId);
+    
+    if (isAlreadyFriend) {
+      return res.status(400).json({ message: 'User is already in your contacts' });
+    }
+    
+    // Create friend request
+    const friendRequest = await storage.createFriendRequest({
+      senderId,
+      receiverId
+    });
+    
+    // Notify the receiver through WebSocket if they're online
+    const receiverSocket = storage.getConnection(receiverId);
+    if (receiverSocket && receiverSocket.readyState === WebSocket.OPEN) {
+      receiverSocket.send(JSON.stringify({
+        type: 'friend_request',
+        request: {
+          id: friendRequest.id,
+          senderId: friendRequest.senderId,
+          receiverId: friendRequest.receiverId,
+          status: friendRequest.status,
+          createdAt: friendRequest.createdAt.toISOString()
+        }
+      }));
+    }
+    
+    res.status(201).json(friendRequest);
+  });
+  
+  // Get pending friend requests
+  app.get('/api/friend-requests/pending', async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
+    
+    const userId = req.user!.id;
+    const pendingRequests = await storage.getPendingFriendRequests(userId);
+    
+    // Fetch sender details for each request
+    const requestsWithSenders = await Promise.all(pendingRequests.map(async (request) => {
+      const sender = await storage.getUser(request.senderId);
+      const { password: _, ...safeSender } = sender!;
+      return {
+        ...request,
+        sender: safeSender
+      };
+    }));
+    
+    res.json(requestsWithSenders);
+  });
+  
+  // Respond to a friend request
+  app.put('/api/friend-requests/:id', async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
+    
+    const userId = req.user!.id;
+    const requestId = parseInt(req.params.id);
+    const { status } = req.body; // 'accepted' or 'rejected'
+    
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be "accepted" or "rejected"' });
+    }
+    
+    // Get the friend request
+    const friendRequest = await storage.getFriendRequestById(requestId);
+    
+    if (!friendRequest) {
+      return res.status(404).json({ message: 'Friend request not found' });
+    }
+    
+    // Check if the current user is the receiver of the request
+    if (friendRequest.receiverId !== userId) {
+      return res.status(403).json({ message: 'You can only respond to friend requests sent to you' });
+    }
+    
+    // Check if request is already handled
+    if (friendRequest.status !== 'pending') {
+      return res.status(400).json({ message: `Friend request is already ${friendRequest.status}` });
+    }
+    
+    // Update request status
+    const updatedRequest = await storage.updateFriendRequestStatus(requestId, status);
+    
+    // If accepted, add both users to each other's contacts
+    if (status === 'accepted') {
+      await storage.addContact(friendRequest.senderId, friendRequest.receiverId);
+      await storage.addContact(friendRequest.receiverId, friendRequest.senderId);
+    }
+    
+    // Notify the sender through WebSocket if they're online
+    const senderSocket = storage.getConnection(friendRequest.senderId);
+    if (senderSocket && senderSocket.readyState === WebSocket.OPEN) {
+      senderSocket.send(JSON.stringify({
+        type: 'friend_request_response',
+        requestId: friendRequest.id,
+        senderId: friendRequest.senderId,
+        receiverId: friendRequest.receiverId,
+        status
+      }));
+    }
+    
+    res.json(updatedRequest);
   });
   
   // Get messages between user and contact
@@ -190,10 +304,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       user.displayName.toLowerCase().includes(username.toLowerCase())
     );
     
-    // Return users without sensitive info
-    const safeUsers = matchedUsers.map(({ password, ...safeUser }) => safeUser);
+    // Get friend requests to check statuses
+    const friendRequests = await storage.getFriendRequests(currentUserId);
     
-    res.json(safeUsers);
+    // Get contacts to check who is already a friend
+    const contacts = await storage.getContacts(currentUserId);
+    const contactIds = contacts.map(c => c.contact.id);
+    
+    // Return users with friend status info
+    const usersWithStatus = matchedUsers.map(user => {
+      const { password, ...safeUser } = user;
+      
+      // Check if users are already friends
+      const isFriend = contactIds.includes(user.id);
+      
+      // Check for pending request
+      const pendingRequest = friendRequests.find(req => 
+        (req.senderId === currentUserId && req.receiverId === user.id) || 
+        (req.senderId === user.id && req.receiverId === currentUserId)
+      );
+      
+      let requestStatus = null;
+      let requestId = null;
+      
+      if (pendingRequest) {
+        requestStatus = pendingRequest.status;
+        requestId = pendingRequest.id;
+      }
+      
+      return {
+        ...safeUser,
+        isFriend,
+        friendRequest: pendingRequest ? {
+          id: requestId,
+          status: requestStatus,
+          isOutgoing: pendingRequest.senderId === currentUserId
+        } : null
+      };
+    });
+    
+    res.json(usersWithStatus);
   });
   
   // Helper function to broadcast to all connections

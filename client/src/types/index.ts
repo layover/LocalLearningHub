@@ -10,6 +10,15 @@ export interface User {
   isOnline: boolean;
 }
 
+export interface UserWithFriendStatus extends User {
+  isFriend?: boolean;
+  friendRequest?: {
+    id: number;
+    status: string;
+    isOutgoing: boolean;
+  } | null;
+}
+
 export interface Message {
   id: number;
   senderId: number;
