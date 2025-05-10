@@ -6,26 +6,28 @@ export interface User {
   about?: string | null;
   email?: string | null;
   phone?: string | null;
-  lastSeen?: string | Date | null;
-  isOnline: boolean;
-}
-
-export interface UserWithFriendStatus extends User {
-  isFriend?: boolean;
-  friendRequest?: {
-    id: number;
-    status: string;
-    isOutgoing: boolean;
-  } | null;
+  isOnline?: boolean;
+  lastSeen?: string | null;
 }
 
 export interface Message {
   id: number;
   senderId: number;
-  receiverId: number;
+  receiverId: number | null;
+  groupId?: number | null;
   content: string;
-  createdAt: string | Date;
+  createdAt: string;
   read: boolean;
+  messageType?: 'direct' | 'group';
+}
+
+export interface FriendRequest {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  status: string;
+  createdAt: string;
+  sender?: User;
 }
 
 export interface Contact {
@@ -33,28 +35,35 @@ export interface Contact {
   unreadCount: number;
 }
 
+export interface Group {
+  id: number;
+  name: string;
+  description: string | null;
+  avatar: string | null;
+  creatorId: number;
+  createdAt: string;
+}
+
+export interface GroupMember {
+  id: number;
+  groupId: number;
+  userId: number;
+  role: 'admin' | 'member';
+  createdAt: string;
+}
+
+export interface GroupInvite {
+  id: number;
+  groupId: number;
+  inviterId: number;
+  inviteeId: number;
+  status: string;
+  createdAt: string;
+  group?: Group;
+  inviter?: User;
+}
+
 export interface WebSocketMessage {
-  type: 'message' | 'status' | 'read_receipt' | 'friend_request' | 'friend_request_response';
-  message?: {
-    id: number;
-    senderId: number;
-    receiverId: number;
-    content: string;
-    createdAt: string;
-    read: boolean;
-  };
-  userId?: number;
-  isOnline?: boolean;
-  messageIds?: number[];
-  request?: {
-    id: number;
-    senderId: number;
-    receiverId: number;
-    status: string;
-    createdAt: string;
-  };
-  requestId?: number;
-  senderId?: number;
-  receiverId?: number;
-  status?: string;
+  type: string;
+  [key: string]: any;
 }
