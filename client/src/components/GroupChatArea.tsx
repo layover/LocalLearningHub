@@ -10,7 +10,8 @@ import {
   UserPlus,
   Settings,
   Users,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -44,20 +45,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Group, User, Message, Contact, GroupMember } from "@/types";
+import GroupMemberList from "@/components/GroupMemberList";
 
 export default function GroupChatArea() {
   const { user } = useAuth();
-  const { selectedGroup, selectGroup, contacts } = useChat();
+  const { selectedGroup, selectGroup, contacts, sendGroupMessage: chatSendGroupMessage } = useChat();
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [potentialMembers, setPotentialMembers] = useState<Contact['contact'][]>([]);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
-  const messageContainerRef = useRef<HTMLDivElement>(null);
+  const [showMemberList, setShowMemberList] = useState(false);
+  const messageContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -109,7 +111,9 @@ export default function GroupChatArea() {
     if (!selectedGroup || !user || !membersData.length) return;
     
     const currentUserMember = membersData.find(m => m.user.id === user.id);
-    setIsAdmin(currentUserMember?.member.role === 'admin');
+    if (currentUserMember) {
+      setIsAdmin(currentUserMember.member.role === 'admin' || currentUserMember.member.role === 'owner');
+    }
   }, [selectedGroup, user, membersData]);
   
   // 消息滚动到底部
@@ -135,7 +139,7 @@ export default function GroupChatArea() {
   }));
   
   // 发送消息
-  const sendGroupMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!message.trim() || !selectedGroup || !user) return;
@@ -143,27 +147,32 @@ export default function GroupChatArea() {
     setIsSending(true);
     
     try {
-      const response = await fetch(`/api/groups/${selectedGroup.id}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          content: message.trim(),
-          senderId: user.id,
-          groupId: selectedGroup.id
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error("发送群组消息失败");
+      if (chatSendGroupMessage) {
+        await chatSendGroupMessage(message.trim(), selectedGroup.id);
+      } else {
+        // 后备直接API调用
+        const response = await fetch(`/api/groups/${selectedGroup.id}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            content: message.trim(),
+            senderId: user.id,
+            groupId: selectedGroup.id
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error("发送群组消息失败");
+        }
+        
+        // 刷新消息列表
+        queryClient.invalidateQueries({ queryKey: [`/api/groups/${selectedGroup.id}/messages`] });
       }
       
       // 清空输入
       setMessage("");
-      
-      // 刷新消息列表
-      queryClient.invalidateQueries({ queryKey: [`/api/groups/${selectedGroup.id}/messages`] });
     } catch (error: any) {
       toast({
         title: "发送失败",
@@ -321,220 +330,264 @@ export default function GroupChatArea() {
   }
   
   return (
-    <div className="flex flex-col h-full">
-      {/* 群组标题栏 */}
-      <div className="border-b p-3 flex justify-between items-center">
-        <div className="flex items-center">
-          <Avatar className="h-10 w-10 mr-3">
-            <AvatarFallback>
-              <Users className="h-6 w-6" />
-            </AvatarFallback>
-            {selectedGroup.avatar && (
-              <AvatarImage 
-                src={selectedGroup.avatar} 
-                alt={selectedGroup.name} 
-              />
-            )}
-          </Avatar>
-          <div>
-            <div className="font-bold">{selectedGroup.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {membersData.length} 位成员
+    <div className="flex h-full relative">
+      {/* 主聊天区域 */}
+      <div className="flex flex-col flex-1 h-full">
+        {/* 群组标题栏 */}
+        <div className="border-b p-3 flex justify-between items-center">
+          <div className="flex items-center">
+            <Avatar className="h-10 w-10 mr-3">
+              <AvatarFallback>
+                <Users className="h-6 w-6" />
+              </AvatarFallback>
+              {selectedGroup.avatar && (
+                <AvatarImage 
+                  src={selectedGroup.avatar} 
+                  alt={selectedGroup.name} 
+                />
+              )}
+            </Avatar>
+            <div>
+              <div className="font-bold">{selectedGroup.name}</div>
+              <div className="text-xs text-muted-foreground flex items-center">
+                <Button 
+                  variant="link" 
+                  size="sm" 
+                  className="p-0 h-auto text-xs text-muted-foreground" 
+                  onClick={() => setShowMemberList(!showMemberList)}
+                >
+                  {membersData.length} 位成员
+                  {membersData.filter(m => m.user.isOnline).length > 0 && (
+                    <span className="ml-1 text-green-500">
+                      ({membersData.filter(m => m.user.isOnline).length} 在线)
+                    </span>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
+          <div className="flex items-center">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mr-2"
+              onClick={() => setShowMemberList(!showMemberList)}
+            >
+              {showMemberList ? <X className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+              <span className="ml-1 hidden sm:inline">
+                {showMemberList ? "隐藏成员" : "显示成员"}
+              </span>
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuLabel>群组选项</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
-              <DialogTrigger asChild>
-                <DropdownMenuItem onSelect={e => e.preventDefault()}>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  添加成员
-                </DropdownMenuItem>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>添加群组成员</DialogTitle>
-                  <DialogDescription>
-                    从您的联系人中选择要添加到群组的成员
-                  </DialogDescription>
-                </DialogHeader>
-                {potentialMembers.length === 0 ? (
-                  <div className="py-6 text-center text-muted-foreground">
-                    <UserPlus className="mx-auto h-10 w-10 mb-2" />
-                    <p>没有可添加的联系人</p>
-                    <p className="text-xs mt-1">您的所有联系人已经在这个群组中</p>
-                  </div>
-                ) : (
-                  <div className="py-4">
-                    <div className="max-h-[200px] overflow-y-auto space-y-2">
-                      {potentialMembers.map(contact => (
-                        <div key={contact.id} className="flex items-center space-x-2 p-2 hover:bg-accent rounded-md">
-                          <Checkbox
-                            id={`member-${contact.id}`}
-                            checked={selectedMembers.includes(contact.id)}
-                            onCheckedChange={() => toggleSelectMember(contact.id)}
-                          />
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>{contact.displayName[0]}</AvatarFallback>
-                            {contact.avatar && <AvatarImage src={contact.avatar} />}
-                          </Avatar>
-                          <label
-                            htmlFor={`member-${contact.id}`}
-                            className="flex-1 cursor-pointer"
-                          >
-                            {contact.displayName}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <DialogFooter>
-                  <Button
-                    onClick={addMembers}
-                    disabled={selectedMembers.length === 0}
-                  >
-                    添加所选成员
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <DropdownMenuItem>
-              <Info className="mr-2 h-4 w-4" />
-              查看群组信息
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <DropdownMenuItem 
-                  className="text-red-500 focus:text-red-500" 
-                  onSelect={e => e.preventDefault()}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {isAdmin ? "删除群组" : "退出群组"}
-                </DropdownMenuItem>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    {isAdmin ? "删除群组" : "退出群组"}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {isAdmin 
-                      ? "确定要删除这个群组吗？此操作无法撤销，所有群组数据将被永久删除。" 
-                      : "确定要退出这个群组吗？您需要被邀请才能重新加入。"}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={isAdmin ? deleteGroup : leaveGroup}
-                    className="bg-red-500 hover:bg-red-600"
-                  >
-                    {isAdmin ? "删除" : "退出"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      
-      {/* 消息区域 */}
-      <ScrollArea className="flex-1 p-4" ref={messageContainerRef}>
-        {isLoadingMessages ? (
-          <div className="flex justify-center items-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-            <Users className="h-12 w-12 mb-2" />
-            <p className="font-medium">群组聊天已创建</p>
-            <p className="text-sm">发送第一条消息开始对话</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {groupedMessageArray.map((group, i) => (
-              <div key={i} className="space-y-4">
-                <div className="relative flex justify-center">
-                  <span className="bg-muted text-muted-foreground text-xs px-2 py-1 rounded">
-                    {format(new Date(group.date), 'yyyy年MM月dd日')}
-                  </span>
-                </div>
-                
-                {group.messages.map((msg: Message) => {
-                  // 找到发送者信息
-                  const sender = membersData.find(m => m.user.id === msg.senderId)?.user;
-                  const isOwnMessage = msg.senderId === user?.id;
-                  
-                  return (
-                    <div 
-                      key={msg.id} 
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[80%]`}>
-                        {!isOwnMessage && (
-                          <Avatar className="h-8 w-8 mt-1 mx-2">
-                            <AvatarFallback>
-                              {sender?.displayName?.charAt(0) || '?'}
-                            </AvatarFallback>
-                            {sender?.avatar && <AvatarImage src={sender.avatar} />}
-                          </Avatar>
-                        )}
-                        
-                        <div>
-                          {!isOwnMessage && (
-                            <div className="text-xs text-muted-foreground mb-1">
-                              {sender?.displayName || 'Unknown'}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>群组选项</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <Dialog open={isAddMemberOpen} onOpenChange={setIsAddMemberOpen}>
+                  <DialogTrigger asChild>
+                    <DropdownMenuItem onSelect={e => e.preventDefault()}>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      添加成员
+                    </DropdownMenuItem>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>添加群组成员</DialogTitle>
+                      <DialogDescription>
+                        从您的联系人中选择要添加到群组的成员
+                      </DialogDescription>
+                    </DialogHeader>
+                    {potentialMembers.length === 0 ? (
+                      <div className="py-6 text-center text-muted-foreground">
+                        <UserPlus className="mx-auto h-10 w-10 mb-2" />
+                        <p>没有可添加的联系人</p>
+                        <p className="text-xs mt-1">您的所有联系人已经在这个群组中</p>
+                      </div>
+                    ) : (
+                      <div className="py-4">
+                        <div className="max-h-[200px] overflow-y-auto space-y-2">
+                          {potentialMembers.map(contact => (
+                            <div key={contact.id} className="flex items-center space-x-2 p-2 hover:bg-accent rounded-md">
+                              <Checkbox
+                                id={`member-${contact.id}`}
+                                checked={selectedMembers.includes(contact.id)}
+                                onCheckedChange={() => toggleSelectMember(contact.id)}
+                              />
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>{contact.displayName[0]}</AvatarFallback>
+                                {contact.avatar && <AvatarImage src={contact.avatar} />}
+                              </Avatar>
+                              <label
+                                htmlFor={`member-${contact.id}`}
+                                className="flex-1 cursor-pointer"
+                              >
+                                {contact.displayName}
+                              </label>
                             </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <DialogFooter>
+                      <Button
+                        onClick={addMembers}
+                        disabled={selectedMembers.length === 0}
+                      >
+                        添加所选成员
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <DropdownMenuItem>
+                  <Info className="mr-2 h-4 w-4" />
+                  查看群组信息
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <DropdownMenuItem 
+                      className="text-red-500 focus:text-red-500" 
+                      onSelect={e => e.preventDefault()}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {isAdmin ? "删除群组" : "退出群组"}
+                    </DropdownMenuItem>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {isAdmin ? "删除群组" : "退出群组"}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {isAdmin 
+                          ? "确定要删除这个群组吗？此操作无法撤销，所有群组数据将被永久删除。" 
+                          : "确定要退出这个群组吗？您需要被邀请才能重新加入。"}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={isAdmin ? deleteGroup : leaveGroup}
+                        className="bg-red-500 hover:bg-red-600"
+                      >
+                        {isAdmin ? "删除" : "退出"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        
+        {/* 消息区域 */}
+        <ScrollArea className="flex-1 p-4" ref={messageContainerRef}>
+          {isLoadingMessages ? (
+            <div className="flex justify-center items-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+              <Users className="h-12 w-12 mb-2" />
+              <p className="font-medium">群组聊天已创建</p>
+              <p className="text-sm">发送第一条消息开始对话</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {groupedMessageArray.map((group, i) => (
+                <div key={i} className="space-y-4">
+                  <div className="relative flex justify-center">
+                    <span className="bg-muted text-muted-foreground text-xs px-2 py-1 rounded">
+                      {format(new Date(group.date), 'yyyy年MM月dd日')}
+                    </span>
+                  </div>
+                  
+                  {group.messages.map((msg: Message) => {
+                    // 找到发送者信息
+                    const sender = membersData.find(m => m.user.id === msg.senderId)?.user;
+                    const isOwnMessage = msg.senderId === user?.id;
+                    
+                    return (
+                      <div 
+                        key={msg.id} 
+                        className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div className={`flex ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[80%]`}>
+                          {!isOwnMessage && (
+                            <Avatar className="h-8 w-8 mt-1 mx-2">
+                              <AvatarFallback>
+                                {sender?.displayName?.charAt(0) || '?'}
+                              </AvatarFallback>
+                              {sender?.avatar && <AvatarImage src={sender.avatar} />}
+                            </Avatar>
                           )}
                           
-                          <div className={`
-                            p-3 rounded-lg
-                            ${isOwnMessage 
-                              ? 'bg-primary text-primary-foreground' 
-                              : 'bg-muted text-foreground'}
-                          `}>
-                            {msg.content}
-                            <div className="text-xs opacity-70 mt-1 text-right">
+                          <div>
+                            {!isOwnMessage && (
+                              <div className="text-xs text-muted-foreground ml-1 mb-1">
+                                {sender?.displayName || '未知用户'}
+                              </div>
+                            )}
+                            <div className={`${
+                              isOwnMessage 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'bg-muted'
+                            } p-3 rounded-lg`}>
+                              {msg.content}
+                            </div>
+                            <div className={`text-xs text-muted-foreground mt-1 ${
+                              isOwnMessage ? 'text-right' : 'text-left'
+                            }`}>
                               {format(new Date(msg.createdAt), 'HH:mm')}
                             </div>
                           </div>
+                          
+                          {isOwnMessage && (
+                            <Avatar className="h-8 w-8 mt-1 mx-2">
+                              <AvatarFallback>
+                                {user?.displayName?.charAt(0) || '?'}
+                              </AvatarFallback>
+                              {user?.avatar && <AvatarImage src={user.avatar} />}
+                            </Avatar>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-      
-      {/* 输入区域 */}
-      <form onSubmit={sendGroupMessage} className="p-4 border-t flex items-center gap-2">
-        <Input
-          placeholder="输入消息..."
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          className="flex-1"
-        />
-        <Button type="submit" disabled={!message.trim() || isSending}>
-          {isSending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           )}
-        </Button>
-      </form>
+        </ScrollArea>
+        
+        {/* 输入区域 */}
+        <form onSubmit={handleSendMessage} className="p-4 border-t flex items-center gap-2">
+          <Input
+            placeholder="输入消息..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="flex-1"
+          />
+          <Button type="submit" disabled={!message.trim() || isSending}>
+            {isSending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </form>
+      </div>
+      
+      {/* 成员列表侧边栏 */}
+      {showMemberList && selectedGroup && (
+        <div className="w-[280px] border-l h-full">
+          <GroupMemberList groupId={selectedGroup.id} />
+        </div>
+      )}
     </div>
   );
 }

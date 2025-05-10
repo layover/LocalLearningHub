@@ -12,6 +12,11 @@ export interface User {
 
 export interface UserWithFriendStatus extends User {
   friendStatus?: 'none' | 'pending' | 'requested' | 'friends';
+  isFriend?: boolean;
+  friendRequest?: {
+    id: number;
+    status: string;
+  };
 }
 
 export interface Message {
