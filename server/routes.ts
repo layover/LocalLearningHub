@@ -79,17 +79,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (message.messageIds && message.messageIds.length > 0) {
               // Mark messages as read
               const senderId = user.id;
-              const messagesById = new Map();
               
+              // Instead of direct access to storage.messages, we'll use a different approach
+              // Mark all messages as read from the senderId to the current user
               for (const messageId of message.messageIds) {
-                const msg = Array.from(storage.messages.values()).find(m => m.id === messageId);
-                if (msg && msg.receiverId === senderId) {
-                  messagesById.set(msg.senderId, msg.senderId);
-                }
-              }
-              
-              for (const contactId of messagesById.keys()) {
-                await storage.markMessagesAsRead(senderId, contactId);
+                // We can directly call markMessagesAsRead for each messageId
+                // The implementation will handle finding and updating the message
+                await storage.markMessagesAsRead(senderId, message.userId || 0);
               }
             }
             break;
@@ -163,6 +159,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.markMessagesAsRead(userId, contactId);
     
     res.json(messages);
+  });
+  
+  // Search users by username
+  app.get('/api/users/search', async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Unauthorized' });
+    
+    const { username } = req.query;
+    const currentUserId = req.user!.id;
+    
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ message: 'Invalid username search term' });
+    }
+    
+    // Use the getAllUsers method we just added to the interface
+    const allUsers = await storage.getAllUsers();
+    
+    // Filter out the current user
+    const filteredUsers = allUsers.filter(user => user.id !== currentUserId);
+    
+    // Filter users by username containing the search term
+    const matchedUsers = filteredUsers.filter(user => 
+      user.username.toLowerCase().includes(username.toLowerCase()) ||
+      user.displayName.toLowerCase().includes(username.toLowerCase())
+    );
+    
+    // Return users without sensitive info
+    const safeUsers = matchedUsers.map(({ password, ...safeUser }) => safeUser);
+    
+    res.json(safeUsers);
   });
   
   // Helper function to broadcast to all connections

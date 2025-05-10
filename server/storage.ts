@@ -17,6 +17,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUserStatus(id: number, isOnline: boolean): Promise<User | undefined>;
   updateUserLastSeen(id: number): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>; // Add a function to get all users
   
   // Message operations
   getMessages(userId: number, contactId: number): Promise<Message[]>;
@@ -59,6 +60,11 @@ export class MemStorage implements IStorage {
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000,
     });
+  }
+
+  // Get all users - implementation for the new interface method
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
   }
 
   async getUser(id: number): Promise<User | undefined> {

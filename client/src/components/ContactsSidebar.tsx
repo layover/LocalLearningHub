@@ -1,16 +1,28 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useChat } from "@/hooks/use-chat";
-import { Search, MoreVertical } from "lucide-react";
+import { Search, MoreVertical, UserPlus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { useState } from "react";
+import { AddContactDialog } from "./AddContactDialog";
 
 export default function ContactsSidebar() {
   const { user, logoutMutation } = useAuth();
   const { contacts, selectContact, selectedContact } = useChat();
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Filter contacts by search query
+  const filteredContacts = searchQuery.trim() 
+    ? contacts.filter(c => 
+        c.contact.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.contact.username.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : contacts;
   
   // Separate online and offline contacts
-  const onlineContacts = contacts.filter(c => c.contact.isOnline);
-  const offlineContacts = contacts.filter(c => !c.contact.isOnline);
+  const onlineContacts = filteredContacts.filter(c => c.contact.isOnline);
+  const offlineContacts = filteredContacts.filter(c => !c.contact.isOnline);
   
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -43,8 +55,12 @@ export default function ContactsSidebar() {
       <div className="p-4 bg-primary">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-white">消息</h1>
-          <button className="text-white hover:text-gray-200">
-            <MoreVertical className="h-6 w-6" />
+          <button 
+            className="text-white hover:text-gray-200"
+            onClick={() => setShowAddContact(true)}
+            title="添加联系人"
+          >
+            <UserPlus className="h-6 w-6" />
           </button>
         </div>
         <div className="flex items-center bg-indigo-700 rounded-full px-3 py-1">
@@ -53,12 +69,36 @@ export default function ContactsSidebar() {
             type="search" 
             placeholder="搜索联系人..." 
             className="bg-transparent text-white placeholder-indigo-200 ml-2 outline-none text-sm w-full"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
       </div>
       
       {/* Contacts list */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
+        {/* No contacts state */}
+        {contacts.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+            <UserPlus className="h-12 w-12 text-gray-400 mb-2" />
+            <h3 className="text-md font-medium text-gray-700">没有联系人</h3>
+            <p className="text-sm text-gray-500 mb-4">点击右上角的添加按钮来添加新联系人</p>
+            <button 
+              className="px-4 py-2 bg-primary text-white rounded-md hover:bg-indigo-700 transition-colors"
+              onClick={() => setShowAddContact(true)}
+            >
+              添加联系人
+            </button>
+          </div>
+        )}
+        
+        {/* Filtered no results */}
+        {contacts.length > 0 && filteredContacts.length === 0 && (
+          <div className="p-4 text-center">
+            <p className="text-sm text-gray-500">未找到匹配的联系人</p>
+          </div>
+        )}
+        
         {/* Active contacts */}
         <div className="pt-2">
           {onlineContacts.length > 0 && (
@@ -163,6 +203,9 @@ export default function ContactsSidebar() {
           </button>
         </div>
       </div>
+      
+      {/* Add contact dialog */}
+      <AddContactDialog open={showAddContact} onOpenChange={setShowAddContact} />
     </div>
   );
 }
