@@ -1,4 +1,11 @@
-import { users, messages, contacts, friendRequests, type User, type Message, type Contact, type FriendRequest, type InsertUser, type InsertMessage, type InsertContact, type InsertFriendRequest } from "@shared/schema";
+import { 
+  users, messages, contacts, friendRequests, 
+  groups, groupMembers, groupInvites,
+  type User, type Message, type Contact, type FriendRequest, 
+  type Group, type GroupMember, type GroupInvite,
+  type InsertUser, type InsertMessage, type InsertContact, type InsertFriendRequest,
+  type InsertGroup, type InsertGroupMember, type InsertGroupInvite
+} from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
@@ -33,6 +40,10 @@ export interface IStorage {
   markMessagesAsRead(receiverId: number, senderId: number): Promise<void>;
   getUnreadMessageCount(userId: number, contactId: number): Promise<number>;
   
+  // 群组消息操作
+  getGroupMessages(groupId: number): Promise<Message[]>;
+  createGroupMessage(senderId: number, groupId: number, content: string): Promise<Message>;
+  
   // Friend request operations
   getFriendRequests(userId: number): Promise<FriendRequest[]>;
   getFriendRequestById(id: number): Promise<FriendRequest | undefined>;
@@ -43,6 +54,28 @@ export interface IStorage {
   // Contact operations
   getContacts(userId: number): Promise<{ contact: User, unreadCount: number }[]>;
   addContact(userId: number, contactId: number): Promise<Contact>;
+  
+  // 群组操作
+  createGroup(group: InsertGroup): Promise<Group>;
+  getGroup(id: number): Promise<Group | undefined>;
+  getUserGroups(userId: number): Promise<Group[]>;
+  updateGroup(id: number, data: Partial<InsertGroup>): Promise<Group | undefined>;
+  deleteGroup(id: number): Promise<void>;
+  
+  // 群组成员操作
+  addGroupMember(groupId: number, userId: number, role?: string): Promise<GroupMember>;
+  removeGroupMember(groupId: number, userId: number): Promise<void>;
+  getGroupMembers(groupId: number): Promise<GroupMember[]>;
+  getGroupMembersWithUserDetails(groupId: number): Promise<{ member: GroupMember, user: User }[]>;
+  updateGroupMemberRole(groupId: number, userId: number, role: string): Promise<GroupMember | undefined>;
+  isGroupMember(groupId: number, userId: number): Promise<boolean>;
+  isGroupAdmin(groupId: number, userId: number): Promise<boolean>;
+  
+  // 群组邀请操作
+  createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite>;
+  getGroupInvite(id: number): Promise<GroupInvite | undefined>;
+  getUserGroupInvites(userId: number): Promise<GroupInvite[]>;
+  updateGroupInviteStatus(id: number, status: string): Promise<GroupInvite | undefined>;
   
   // WebSocket connections
   addConnection(userId: number, socket: WebSocket): void;
