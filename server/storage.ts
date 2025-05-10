@@ -1,12 +1,17 @@
 import { users, messages, contacts, friendRequests, type User, type Message, type Contact, type FriendRequest, type InsertUser, type InsertMessage, type InsertContact, type InsertFriendRequest } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
 import { WebSocket } from "ws";
+import { db } from "./db";
+import { eq, and, or, desc, asc } from "drizzle-orm";
+import { pool } from "./db";
 
 // Create a type for session.Store to fix SessionStore issues
 type SessionStore = session.Store;
 
 const MemoryStore = createMemoryStore(session);
+const PostgresSessionStore = connectPg(session);
 
 interface UserConnection {
   userId: number;
@@ -49,170 +54,166 @@ export interface IStorage {
   sessionStore: SessionStore;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private messages: Map<number, Message>;
-  private contacts: Map<number, Contact>;
-  private friendRequests: Map<number, FriendRequest>;
+export class DatabaseStorage implements IStorage {
   private connections: Map<number, WebSocket>;
   sessionStore: SessionStore;
-  currentUserId: number;
-  currentMessageId: number;
-  currentContactId: number;
-  currentFriendRequestId: number;
 
   constructor() {
-    this.users = new Map();
-    this.messages = new Map();
-    this.contacts = new Map();
-    this.friendRequests = new Map();
     this.connections = new Map();
-    this.currentUserId = 1;
-    this.currentMessageId = 1;
-    this.currentContactId = 1;
-    this.currentFriendRequestId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000,
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true
     });
+    console.log("DatabaseStorage initialized with PostgreSQL connection");
   }
 
   // Friend request operations
   async getFriendRequests(userId: number): Promise<FriendRequest[]> {
-    return Array.from(this.friendRequests.values()).filter(
-      request => request.senderId === userId || request.receiverId === userId
+    return await db.select().from(friendRequests).where(
+      or(
+        eq(friendRequests.senderId, userId),
+        eq(friendRequests.receiverId, userId)
+      )
     );
   }
 
   async getFriendRequestById(id: number): Promise<FriendRequest | undefined> {
-    return this.friendRequests.get(id);
+    const result = await db.select().from(friendRequests).where(eq(friendRequests.id, id));
+    return result.length > 0 ? result[0] : undefined;
   }
 
   async getPendingFriendRequests(userId: number): Promise<FriendRequest[]> {
-    return Array.from(this.friendRequests.values()).filter(
-      request => request.receiverId === userId && request.status === 'pending'
+    return await db.select().from(friendRequests).where(
+      and(
+        eq(friendRequests.receiverId, userId),
+        eq(friendRequests.status, 'pending')
+      )
     );
   }
 
   async createFriendRequest(request: InsertFriendRequest): Promise<FriendRequest> {
-    const id = this.currentFriendRequestId++;
-    const now = new Date();
-    const friendRequest: FriendRequest = {
+    const result = await db.insert(friendRequests).values({
       ...request,
-      id,
       status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.friendRequests.set(id, friendRequest);
-    return friendRequest;
+    }).returning();
+    return result[0];
   }
 
   async updateFriendRequestStatus(id: number, status: string): Promise<FriendRequest | undefined> {
-    const request = await this.getFriendRequestById(id);
-    if (!request) return undefined;
-
-    const updatedRequest: FriendRequest = { 
-      ...request, 
-      status,
-      updatedAt: new Date()
-    };
-    
-    this.friendRequests.set(id, updatedRequest);
-    return updatedRequest;
+    const result = await db.update(friendRequests)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(friendRequests.id, id))
+      .returning();
+    return result.length > 0 ? result[0] : undefined;
   }
 
-  // Get all users - implementation for the new interface method
+  // Get all users
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return await db.select().from(users);
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    console.log(`Fetching user with ID: ${id}`);
+    const result = await db.select().from(users).where(eq(users.id, id));
+    if (result.length === 0) {
+      console.log(`No user found with ID: ${id}`);
+      return undefined;
+    }
+    console.log(`Found user: ${result[0].username}`);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const result = await db.select().from(users).where(eq(users.username, username));
+    return result.length > 0 ? result[0] : undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const now = new Date();
-    const user: User = { 
-      ...insertUser, 
-      id, 
-      isOnline: false, 
-      lastSeen: now
-    };
-    this.users.set(id, user);
-    return user;
+    console.log("Creating new user:", insertUser.username);
+    const result = await db.insert(users).values({
+      ...insertUser,
+      isOnline: false,
+      lastSeen: new Date(),
+    }).returning();
+    console.log(`User created with ID: ${result[0].id}`);
+    return result[0];
   }
 
   async updateUserStatus(id: number, isOnline: boolean): Promise<User | undefined> {
-    const user = await this.getUser(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, isOnline };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    const result = await db.update(users)
+      .set({ isOnline })
+      .where(eq(users.id, id))
+      .returning();
+    return result.length > 0 ? result[0] : undefined;
   }
 
   async updateUserLastSeen(id: number): Promise<User | undefined> {
-    const user = await this.getUser(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, lastSeen: new Date() };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    const result = await db.update(users)
+      .set({ lastSeen: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return result.length > 0 ? result[0] : undefined;
   }
 
   async getMessages(userId: number, contactId: number): Promise<Message[]> {
-    return Array.from(this.messages.values()).filter(
-      (message) => 
-        (message.senderId === userId && message.receiverId === contactId) ||
-        (message.senderId === contactId && message.receiverId === userId)
-    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return await db.select().from(messages)
+      .where(
+        or(
+          and(
+            eq(messages.senderId, userId),
+            eq(messages.receiverId, contactId)
+          ),
+          and(
+            eq(messages.senderId, contactId),
+            eq(messages.receiverId, userId)
+          )
+        )
+      )
+      .orderBy(asc(messages.createdAt));
   }
 
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const id = this.currentMessageId++;
-    const message: Message = {
+    const result = await db.insert(messages).values({
       ...insertMessage,
-      id,
-      createdAt: new Date(),
       read: false,
-    };
-    this.messages.set(id, message);
-    return message;
+    }).returning();
+    return result[0];
   }
 
   async markMessagesAsRead(receiverId: number, senderId: number): Promise<void> {
-    Array.from(this.messages.values())
-      .filter(msg => msg.senderId === senderId && msg.receiverId === receiverId && !msg.read)
-      .forEach(msg => {
-        const updatedMsg = { ...msg, read: true };
-        this.messages.set(msg.id, updatedMsg);
-      });
+    await db.update(messages)
+      .set({ read: true })
+      .where(
+        and(
+          eq(messages.senderId, senderId),
+          eq(messages.receiverId, receiverId),
+          eq(messages.read, false)
+        )
+      );
   }
 
   async getUnreadMessageCount(userId: number, contactId: number): Promise<number> {
-    return Array.from(this.messages.values()).filter(
-      (message) => message.senderId === contactId && message.receiverId === userId && !message.read
-    ).length;
+    const result = await db.select().from(messages)
+      .where(
+        and(
+          eq(messages.senderId, contactId),
+          eq(messages.receiverId, userId),
+          eq(messages.read, false)
+        )
+      );
+    return result.length;
   }
 
   async getContacts(userId: number): Promise<{ contact: User, unreadCount: number }[]> {
-    const userContacts = Array.from(this.contacts.values())
-      .filter(contact => contact.userId === userId)
-      .map(contact => contact.contactId);
+    const userContacts = await db.select().from(contacts)
+      .where(eq(contacts.userId, userId));
     
     const results = [];
-    for (const contactId of userContacts) {
-      const contact = await this.getUser(contactId);
-      if (contact) {
-        const unreadCount = await this.getUnreadMessageCount(userId, contactId);
-        results.push({ contact, unreadCount });
+    for (const contact of userContacts) {
+      const user = await this.getUser(contact.contactId);
+      if (user) {
+        const unreadCount = await this.getUnreadMessageCount(userId, contact.contactId);
+        results.push({ contact: user, unreadCount });
       }
     }
     
@@ -221,26 +222,33 @@ export class MemStorage implements IStorage {
 
   async addContact(userId: number, contactId: number): Promise<Contact> {
     // Check if contact already exists
-    const existingContact = Array.from(this.contacts.values()).find(
-      (contact) => contact.userId === userId && contact.contactId === contactId
-    );
+    const existingContact = await db.select().from(contacts)
+      .where(
+        and(
+          eq(contacts.userId, userId),
+          eq(contacts.contactId, contactId)
+        )
+      );
     
-    if (existingContact) {
-      return existingContact;
+    if (existingContact.length > 0) {
+      return existingContact[0];
     }
     
-    const id = this.currentContactId++;
-    const now = new Date();
-    const contact: Contact = { id, userId, contactId, createdAt: now };
-    this.contacts.set(id, contact);
-    return contact;
+    const result = await db.insert(contacts).values({
+      userId,
+      contactId,
+    }).returning();
+    
+    return result[0];
   }
 
   addConnection(userId: number, socket: WebSocket): void {
+    console.log(`Adding WebSocket connection for user ${userId}`);
     this.connections.set(userId, socket);
   }
 
   removeConnection(userId: number): void {
+    console.log(`Removing WebSocket connection for user ${userId}`);
     this.connections.delete(userId);
   }
 
@@ -256,4 +264,5 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Create a memory-based storage for development and a database storage for production
+export const storage = new DatabaseStorage();
