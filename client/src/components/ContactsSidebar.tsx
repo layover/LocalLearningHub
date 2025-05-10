@@ -104,8 +104,14 @@ export default function ContactsSidebar() {
                     size="sm" 
                     variant="default" 
                     className="flex-1"
-                    onClick={() => pendingFriendRequests.length > 0 && 
-                      useChat().respondToFriendRequest(request.id, 'accepted')}
+                    onClick={() => {
+                      console.log("接受好友请求:", request.id);
+                      if (pendingFriendRequests.length > 0) {
+                        const chat = useChat();
+                        console.log("useChat:", chat);
+                        chat.respondToFriendRequest(request.id, 'accepted');
+                      }
+                    }}
                   >
                     <Check className="h-3 w-3 mr-1" />
                     接受
@@ -114,8 +120,14 @@ export default function ContactsSidebar() {
                     size="sm" 
                     variant="outline" 
                     className="flex-1"
-                    onClick={() => pendingFriendRequests.length > 0 && 
-                      useChat().respondToFriendRequest(request.id, 'rejected')}
+                    onClick={() => {
+                      console.log("拒绝好友请求:", request.id);
+                      if (pendingFriendRequests.length > 0) {
+                        const chat = useChat();
+                        console.log("useChat:", chat);
+                        chat.respondToFriendRequest(request.id, 'rejected');
+                      }
+                    }}
                   >
                     <X className="h-3 w-3 mr-1" />
                     拒绝

@@ -109,6 +109,13 @@ export interface FriendRequestNotification {
     receiverId: number;
     status: string;
     createdAt: string;
+    sender?: {
+      id: number;
+      username: string;
+      displayName: string;
+      avatar?: string | null;
+      isOnline?: boolean;
+    };
   };
 }
 

@@ -197,11 +197,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Remove sensitive information
     const { password: _, ...safeSender } = sender;
     
+    // Get all active connections
+    const connections = storage.getAllConnections();
+    console.log(`Active connections: ${connections.length}`, 
+      connections.map(c => c.userId));
+    
     // Notify the receiver through WebSocket if they're online
     const receiverSocket = storage.getConnection(receiverId);
+    console.log(`Checking if receiver ${receiverId} has active connection:`, 
+      receiverSocket ? "Yes" : "No");
+    
     if (receiverSocket && receiverSocket.readyState === WebSocket.OPEN) {
       console.log(`Sending friend request notification to user ${receiverId} from user ${senderId}`);
-      receiverSocket.send(JSON.stringify({
+      
+      const notification = {
         type: 'friend_request',
         request: {
           id: friendRequest.id,
@@ -211,7 +220,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           createdAt: friendRequest.createdAt.toISOString(),
           sender: safeSender // Include sender information
         }
-      }));
+      };
+      
+      console.log("Sending notification:", JSON.stringify(notification));
+      
+      try {
+        receiverSocket.send(JSON.stringify(notification));
+        console.log("Notification sent successfully");
+      } catch (error) {
+        console.error("Error sending notification:", error);
+      }
     } else {
       console.log(`User ${receiverId} is not online, could not send real-time notification`);
     }

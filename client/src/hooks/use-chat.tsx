@@ -42,10 +42,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     enabled: !!user,
   });
   
-  // Update state when friend requests change
-  useEffect(() => {
-    setPendingFriendRequests(friendRequests || []);
-  }, [friendRequests]);
+  // 移除this effect，直接使用friendRequests
 
   // Connect to WebSocket server
   useEffect(() => {
