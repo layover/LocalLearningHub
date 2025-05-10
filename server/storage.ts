@@ -98,14 +98,30 @@ export class DatabaseStorage implements IStorage {
   async getPendingFriendRequests(userId: number): Promise<FriendRequest[]> {
     console.log(`获取用户 ${userId} 的待处理好友请求`);
     try {
-      const result = await db.select().from(friendRequests).where(
-        and(
-          eq(friendRequests.receiverId, userId),
-          eq(friendRequests.status, 'pending')
-        )
+      // 先直接获取数据库中所有与此用户相关的请求
+      const allRequests = await db.select().from(friendRequests);
+      console.log(`数据库中所有请求:`, allRequests);
+      
+      // 过滤出此用户收到的待处理请求
+      const result = allRequests.filter(req => 
+        req.receiverId === userId && req.status === 'pending'
       );
       
       console.log(`用户 ${userId} 有 ${result.length} 个待处理好友请求:`, result);
+      
+      // 如果没有找到请求，再次尝试直接通过SQL查询
+      if (result.length === 0) {
+        console.log(`尝试通过SQL查询获取用户 ${userId} 的待处理请求`);
+        const sqlResult = await db.select().from(friendRequests).where(
+          and(
+            eq(friendRequests.receiverId, userId),
+            eq(friendRequests.status, 'pending')
+          )
+        );
+        console.log(`SQL查询结果:`, sqlResult);
+        return sqlResult;
+      }
+      
       return result;
     } catch (error) {
       console.error(`获取待处理好友请求时出错:`, error);
