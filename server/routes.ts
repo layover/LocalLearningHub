@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertMessageSchema, WebSocketMessage } from "@shared/schema";
 import { log } from "./vite";
+import { parse } from "querystring";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication routes
@@ -18,15 +19,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Handle WebSocket connections
   wss.on('connection', async (ws: WebSocket, req) => {
-    // Extract user ID from session
-    if (!req.url) return ws.close();
+    // Extract user ID from query params
+    if (!req.url) {
+      console.error('WebSocket connection: No URL provided');
+      return ws.close();
+    }
+
+    // Log connection attempt with URL
+    console.log(`WebSocket connection attempt with URL: ${req.url}`);
 
     const userId = parseInt(new URL(req.url, 'http://localhost').searchParams.get('userId') || '0');
-    if (!userId) return ws.close();
+    if (!userId) {
+      console.error('WebSocket connection: Invalid user ID');
+      return ws.close();
+    }
+    
+    console.log(`WebSocket connection: User ID ${userId} extracted`);
 
     // Get user
     const user = await storage.getUser(userId);
-    if (!user) return ws.close();
+    if (!user) {
+      console.error(`WebSocket connection: User ${userId} not found`);
+      return ws.close();
+    }
+    
+    console.log(`WebSocket connection: User ${userId} (${user.username}) found and verified`);
 
     // Store connection
     storage.addConnection(userId, ws);

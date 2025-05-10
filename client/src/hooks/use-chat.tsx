@@ -55,10 +55,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/ws?userId=${user.id}`;
       
+      // Log connection attempt
+      console.log(`Attempting WebSocket connection to: ${wsUrl}`);
+      
       const ws = new WebSocket(wsUrl);
       socket.current = ws;
 
       ws.onopen = () => {
+        console.log(`WebSocket connection opened successfully for user ${user.id}`);
         setIsConnected(true);
       };
 
@@ -159,6 +163,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+        console.log('WebSocket error details:', {
+          user: user ? user.id : 'undefined',
+          readyState: ws.readyState,
+          url: wsUrl
+        });
         ws.close();
       };
     };
