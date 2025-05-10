@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertMessageSchema, WebSocketMessage } from "@shared/schema";
+import { db } from "./db";
+import { and, eq, or } from "drizzle-orm";
+import { insertMessageSchema, WebSocketMessage, friendRequests } from "@shared/schema";
 import { log } from "./vite";
 import { parse } from "querystring";
 
