@@ -378,6 +378,242 @@ export class DatabaseStorage implements IStorage {
       socket
     }));
   }
+  
+  // 群组操作
+  async createGroup(group: InsertGroup): Promise<Group> {
+    console.log("创建群组:", group);
+    const [newGroup] = await db.insert(groups).values(group).returning();
+    
+    // 自动添加创建者为管理员
+    await this.addGroupMember(newGroup.id, group.creatorId, 'admin');
+    
+    return newGroup;
+  }
+  
+  async getGroup(id: number): Promise<Group | undefined> {
+    console.log(`获取群组 ${id} 信息`);
+    const [group] = await db.select().from(groups).where(eq(groups.id, id));
+    return group;
+  }
+  
+  async getUserGroups(userId: number): Promise<Group[]> {
+    console.log(`获取用户 ${userId} 所在的群组`);
+    // 获取用户作为成员的所有群组ID
+    const userGroupIds = await db
+      .select({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .where(eq(groupMembers.userId, userId));
+    
+    if (userGroupIds.length === 0) {
+      console.log(`用户 ${userId} 不属于任何群组`);
+      return [];
+    }
+    
+    // 获取这些群组的详细信息
+    const userGroups = await db
+      .select()
+      .from(groups)
+      .where(
+        or(...userGroupIds.map(row => eq(groups.id, row.groupId)))
+      );
+    
+    console.log(`用户 ${userId} 共属于 ${userGroups.length} 个群组`);
+    return userGroups;
+  }
+  
+  async updateGroup(id: number, data: Partial<InsertGroup>): Promise<Group | undefined> {
+    console.log(`更新群组 ${id}:`, data);
+    const [updated] = await db
+      .update(groups)
+      .set(data)
+      .where(eq(groups.id, id))
+      .returning();
+    
+    return updated;
+  }
+  
+  async deleteGroup(id: number): Promise<void> {
+    console.log(`删除群组 ${id}`);
+    // 先删除群组成员
+    await db.delete(groupMembers).where(eq(groupMembers.groupId, id));
+    // 删除群组邀请
+    await db.delete(groupInvites).where(eq(groupInvites.groupId, id));
+    // 删除群消息
+    await db.delete(messages).where(eq(messages.groupId as any, id));
+    // 最后删除群组
+    await db.delete(groups).where(eq(groups.id, id));
+  }
+  
+  // 群组成员操作
+  async addGroupMember(groupId: number, userId: number, role: string = 'member'): Promise<GroupMember> {
+    console.log(`添加用户 ${userId} 到群组 ${groupId}, 角色: ${role}`);
+    const [member] = await db
+      .insert(groupMembers)
+      .values({ groupId, userId, role })
+      .returning();
+    
+    return member;
+  }
+  
+  async removeGroupMember(groupId: number, userId: number): Promise<void> {
+    console.log(`从群组 ${groupId} 移除用户 ${userId}`);
+    await db
+      .delete(groupMembers)
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, userId)
+        )
+      );
+  }
+  
+  async getGroupMembers(groupId: number): Promise<GroupMember[]> {
+    console.log(`获取群组 ${groupId} 的所有成员`);
+    return await db
+      .select()
+      .from(groupMembers)
+      .where(eq(groupMembers.groupId, groupId));
+  }
+  
+  async getGroupMembersWithUserDetails(groupId: number): Promise<{ member: GroupMember, user: User }[]> {
+    console.log(`获取群组 ${groupId} 的所有成员及其详细信息`);
+    const members = await this.getGroupMembers(groupId);
+    
+    // 获取所有成员的用户信息
+    const results = [];
+    for (const member of members) {
+      const user = await this.getUser(member.userId);
+      if (user) {
+        results.push({ member, user });
+      }
+    }
+    
+    return results;
+  }
+  
+  async updateGroupMemberRole(groupId: number, userId: number, role: string): Promise<GroupMember | undefined> {
+    console.log(`更新用户 ${userId} 在群组 ${groupId} 中的角色为 ${role}`);
+    const [updated] = await db
+      .update(groupMembers)
+      .set({ role })
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, userId)
+        )
+      )
+      .returning();
+    
+    return updated;
+  }
+  
+  async isGroupMember(groupId: number, userId: number): Promise<boolean> {
+    const [member] = await db
+      .select()
+      .from(groupMembers)
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, userId)
+        )
+      );
+    
+    return !!member;
+  }
+  
+  async isGroupAdmin(groupId: number, userId: number): Promise<boolean> {
+    const [member] = await db
+      .select()
+      .from(groupMembers)
+      .where(
+        and(
+          eq(groupMembers.groupId, groupId),
+          eq(groupMembers.userId, userId),
+          eq(groupMembers.role, 'admin')
+        )
+      );
+    
+    return !!member;
+  }
+  
+  // 群组邀请操作
+  async createGroupInvite(invite: InsertGroupInvite): Promise<GroupInvite> {
+    console.log(`创建群组邀请: 用户 ${invite.inviterId} 邀请 ${invite.inviteeId} 加入群组 ${invite.groupId}`);
+    const [newInvite] = await db
+      .insert(groupInvites)
+      .values(invite)
+      .returning();
+    
+    return newInvite;
+  }
+  
+  async getGroupInvite(id: number): Promise<GroupInvite | undefined> {
+    console.log(`获取群组邀请 ${id}`);
+    const [invite] = await db
+      .select()
+      .from(groupInvites)
+      .where(eq(groupInvites.id, id));
+    
+    return invite;
+  }
+  
+  async getUserGroupInvites(userId: number): Promise<GroupInvite[]> {
+    console.log(`获取用户 ${userId} 收到的群组邀请`);
+    return await db
+      .select()
+      .from(groupInvites)
+      .where(
+        and(
+          eq(groupInvites.inviteeId, userId),
+          eq(groupInvites.status, 'pending')
+        )
+      );
+  }
+  
+  async updateGroupInviteStatus(id: number, status: string): Promise<GroupInvite | undefined> {
+    console.log(`更新群组邀请 ${id} 状态为 ${status}`);
+    const [updated] = await db
+      .update(groupInvites)
+      .set({ 
+        status, 
+        updatedAt: new Date() 
+      })
+      .where(eq(groupInvites.id, id))
+      .returning();
+    
+    return updated;
+  }
+  
+  // 群组消息操作
+  async getGroupMessages(groupId: number): Promise<Message[]> {
+    console.log(`获取群组 ${groupId} 的消息`);
+    return await db
+      .select()
+      .from(messages)
+      .where(
+        and(
+          eq(messages.groupId as any, groupId),
+          eq(messages.messageType as any, 'group')
+        )
+      )
+      .orderBy(asc(messages.createdAt));
+  }
+  
+  async createGroupMessage(senderId: number, groupId: number, content: string): Promise<Message> {
+    console.log(`创建群组消息: 用户 ${senderId} 在群组 ${groupId} 发送消息`);
+    const [message] = await db
+      .insert(messages)
+      .values({
+        senderId,
+        content,
+        receiverId: null,
+        groupId,
+        messageType: 'group'
+      } as any)
+      .returning();
+    
+    return message;
+  }
 }
 
 // Create a memory-based storage for development and a database storage for production
