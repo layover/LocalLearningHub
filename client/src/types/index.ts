@@ -10,6 +10,10 @@ export interface User {
   lastSeen?: string | null;
 }
 
+export interface UserWithFriendStatus extends User {
+  friendStatus?: 'none' | 'pending' | 'requested' | 'friends';
+}
+
 export interface Message {
   id: number;
   senderId: number;
