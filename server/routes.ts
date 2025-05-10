@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
@@ -69,29 +69,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         switch (message.type) {
           case 'message':
-            const validatedMessage = insertMessageSchema.parse({
-              senderId: message.message.senderId,
-              receiverId: message.message.receiverId,
-              content: message.message.content
-            });
-            
-            // Store message
-            const savedMessage = await storage.createMessage(validatedMessage);
-            
-            // Send message to recipient if online
-            const recipientSocket = storage.getConnection(validatedMessage.receiverId);
-            if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
-              recipientSocket.send(JSON.stringify({
+            // 检查是否为群聊消息
+            if (message.message.messageType === 'group' && message.message.groupId) {
+              // 验证用户是否为群组成员
+              const isGroupMember = await storage.isGroupMember(message.message.groupId, user.id);
+              if (!isGroupMember) {
+                console.error(`用户 ${user.id} 不是群组 ${message.message.groupId} 的成员，无法发送消息`);
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  message: '您不是该群组的成员，无法发送消息'
+                }));
+                break;
+              }
+              
+              // 创建群组消息
+              const savedGroupMessage = await storage.createGroupMessage(
+                user.id,
+                message.message.groupId,
+                message.message.content
+              );
+              
+              // 广播消息给所有群组成员
+              await broadcastToGroupMembers(message.message.groupId, {
+                type: 'message',
+                message: {
+                  ...savedGroupMessage,
+                  messageType: 'group'
+                }
+              });
+              
+              break;
+            } else {
+              // 处理私聊消息
+              const validatedMessage = insertMessageSchema.parse({
+                senderId: message.message.senderId,
+                receiverId: message.message.receiverId,
+                content: message.message.content
+              });
+              
+              // Store message
+              const savedMessage = await storage.createMessage(validatedMessage);
+              
+              // Send message to recipient if online
+              const recipientSocket = storage.getConnection(validatedMessage.receiverId);
+              if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
+                recipientSocket.send(JSON.stringify({
+                  type: 'message',
+                  message: savedMessage
+                }));
+              }
+              
+              // Send confirmation back to sender
+              ws.send(JSON.stringify({
                 type: 'message',
                 message: savedMessage
               }));
             }
-            
-            // Send confirmation back to sender
-            ws.send(JSON.stringify({
-              type: 'message',
-              message: savedMessage
-            }));
             break;
             
           case 'read_receipt':
@@ -477,6 +510,399 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   }
+  
+  // 广播消息给群组所有成员
+  async function broadcastToGroupMembers(groupId: number, data: any): Promise<void> {
+    const members = await storage.getGroupMembers(groupId);
+    const connections = storage.getAllConnections();
+    const jsonData = typeof data === 'string' ? data : JSON.stringify(data);
+    
+    for (const member of members) {
+      const userConnection = connections.find(conn => conn.userId === member.userId);
+      if (userConnection && userConnection.socket.readyState === WebSocket.OPEN) {
+        userConnection.socket.send(jsonData);
+      }
+    }
+  }
+  
+  // 添加确保用户已登录的中间件
+  const ensureAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+    if (req.isAuthenticated()) {
+      return next();
+    }
+    res.status(401).json({ message: "未授权访问" });
+  };
+  
+  // 验证用户是否为群组成员的中间件
+  const ensureGroupMember = async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "未授权访问" });
+    }
+    
+    const groupId = parseInt(req.params.groupId);
+    const userId = req.user!.id;
+    
+    try {
+      const isMember = await storage.isGroupMember(groupId, userId);
+      if (isMember) {
+        return next();
+      } else {
+        return res.status(403).json({ message: "您不是该群组成员" });
+      }
+    } catch (error) {
+      console.error("验证群组成员权限时出错:", error);
+      return res.status(500).json({ message: "验证群组成员权限时出错" });
+    }
+  };
+  
+  // 验证用户是否为群组管理员的中间件
+  const ensureGroupAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "未授权访问" });
+    }
+    
+    const groupId = parseInt(req.params.groupId);
+    const userId = req.user!.id;
+    
+    try {
+      const isAdmin = await storage.isGroupAdmin(groupId, userId);
+      if (isAdmin) {
+        return next();
+      } else {
+        return res.status(403).json({ message: "您不是该群组管理员" });
+      }
+    } catch (error) {
+      console.error("验证群组管理员权限时出错:", error);
+      return res.status(500).json({ message: "验证群组管理员权限时出错" });
+    }
+  };
+  
+  // 群组API端点
+  
+  // 1. 获取用户所在的所有群组
+  app.get('/api/groups', ensureAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const groups = await storage.getUserGroups(userId);
+      res.json(groups);
+    } catch (error) {
+      console.error("获取用户群组时出错:", error);
+      res.status(500).json({ message: "获取用户群组时出错" });
+    }
+  });
+  
+  // 2. 获取群组详情
+  app.get('/api/groups/:groupId', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const group = await storage.getGroup(groupId);
+      
+      if (!group) {
+        return res.status(404).json({ message: "群组不存在" });
+      }
+      
+      res.json(group);
+    } catch (error) {
+      console.error("获取群组详情时出错:", error);
+      res.status(500).json({ message: "获取群组详情时出错" });
+    }
+  });
+  
+  // 3. 创建群组
+  app.post('/api/groups', ensureAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { name, description, avatar, memberIds } = req.body;
+      
+      if (!name || !Array.isArray(memberIds)) {
+        return res.status(400).json({ message: "群组名称和成员列表是必需的" });
+      }
+      
+      // 创建群组
+      const group = await storage.createGroup({
+        name,
+        description,
+        avatar,
+        creatorId: userId
+      });
+      
+      console.log(`用户 ${userId} 创建了群组 ${group.id} (${name})`);
+      
+      // 添加成员
+      const memberPromises = memberIds.map(async (memberId: number) => {
+        // 确保用户是创建者的联系人
+        const contacts = await storage.getContacts(userId);
+        const isContact = contacts.some(c => c.contact.id === memberId);
+        
+        if (isContact) {
+          return storage.addGroupMember(group.id, memberId);
+        } else {
+          console.log(`用户 ${memberId} 不是创建者的联系人，无法添加到群组`);
+          return null;
+        }
+      });
+      
+      await Promise.all(memberPromises);
+      
+      res.status(201).json(group);
+    } catch (error) {
+      console.error("创建群组时出错:", error);
+      res.status(500).json({ message: "创建群组时出错" });
+    }
+  });
+  
+  // 4. 更新群组信息
+  app.put('/api/groups/:groupId', ensureGroupAdmin, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const { name, description, avatar } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ message: "群组名称是必需的" });
+      }
+      
+      const updatedGroup = await storage.updateGroup(groupId, {
+        name,
+        description,
+        avatar
+      });
+      
+      if (!updatedGroup) {
+        return res.status(404).json({ message: "群组不存在" });
+      }
+      
+      // 通知群组所有成员群组信息已更新
+      await broadcastToGroupMembers(groupId, {
+        type: 'group_updated',
+        group: updatedGroup
+      });
+      
+      res.json(updatedGroup);
+    } catch (error) {
+      console.error("更新群组时出错:", error);
+      res.status(500).json({ message: "更新群组时出错" });
+    }
+  });
+  
+  // 5. 删除群组
+  app.delete('/api/groups/:groupId', ensureGroupAdmin, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      
+      // 获取群组成员，以便稍后通知
+      const members = await storage.getGroupMembers(groupId);
+      const memberIds = members.map(m => m.userId);
+      
+      // 删除群组
+      await storage.deleteGroup(groupId);
+      
+      // 通知所有成员群组已删除
+      const connections = storage.getAllConnections();
+      const notification = JSON.stringify({
+        type: 'group_deleted',
+        groupId
+      });
+      
+      for (const id of memberIds) {
+        const userConnection = connections.find(conn => conn.userId === id);
+        if (userConnection && userConnection.socket.readyState === WebSocket.OPEN) {
+          userConnection.socket.send(notification);
+        }
+      }
+      
+      res.status(200).json({ message: "群组已删除" });
+    } catch (error) {
+      console.error("删除群组时出错:", error);
+      res.status(500).json({ message: "删除群组时出错" });
+    }
+  });
+  
+  // 6. 获取群组成员
+  app.get('/api/groups/:groupId/members', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const members = await storage.getGroupMembersWithUserDetails(groupId);
+      res.json(members);
+    } catch (error) {
+      console.error("获取群组成员时出错:", error);
+      res.status(500).json({ message: "获取群组成员时出错" });
+    }
+  });
+  
+  // 7. 添加群组成员
+  app.post('/api/groups/:groupId/members', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const userId = req.user!.id;
+      const { memberId } = req.body;
+      
+      if (!memberId) {
+        return res.status(400).json({ message: "成员ID是必需的" });
+      }
+      
+      // 验证权限
+      const isAdmin = await storage.isGroupAdmin(groupId, userId);
+      const isAlreadyMember = await storage.isGroupMember(groupId, memberId);
+      
+      if (isAlreadyMember) {
+        return res.status(400).json({ message: "用户已经是群组成员" });
+      }
+      
+      // 如果不是管理员，则需要验证是否为本人的联系人
+      if (!isAdmin) {
+        const contacts = await storage.getContacts(userId);
+        const isContact = contacts.some(c => c.contact.id === memberId);
+        
+        if (!isContact) {
+          return res.status(403).json({ message: "只能邀请自己的联系人加入群组" });
+        }
+      }
+      
+      // 添加成员
+      const member = await storage.addGroupMember(groupId, memberId);
+      const user = await storage.getUser(memberId);
+      
+      // 通知群组所有成员有新成员加入
+      await broadcastToGroupMembers(groupId, {
+        type: 'group_membership_change',
+        groupId,
+        userId: memberId,
+        action: 'added',
+        byUserId: userId
+      });
+      
+      res.status(201).json({ member, user });
+    } catch (error) {
+      console.error("添加群组成员时出错:", error);
+      res.status(500).json({ message: "添加群组成员时出错" });
+    }
+  });
+  
+  // 8. 移除群组成员
+  app.delete('/api/groups/:groupId/members/:memberId', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const targetMemberId = parseInt(req.params.memberId);
+      const userId = req.user!.id;
+      
+      // 验证权限
+      const isAdmin = await storage.isGroupAdmin(groupId, userId);
+      const targetIsAdmin = await storage.isGroupAdmin(groupId, targetMemberId);
+      
+      // 非管理员不能移除成员，管理员不能被非管理员移除
+      if (!isAdmin && userId !== targetMemberId) {
+        return res.status(403).json({ message: "没有权限移除其他成员" });
+      }
+      
+      if (targetIsAdmin && userId !== targetMemberId) {
+        return res.status(403).json({ message: "不能移除管理员" });
+      }
+      
+      // 移除成员
+      await storage.removeGroupMember(groupId, targetMemberId);
+      
+      // 通知群组所有成员
+      await broadcastToGroupMembers(groupId, {
+        type: 'group_membership_change',
+        groupId,
+        userId: targetMemberId,
+        action: 'removed',
+        byUserId: userId
+      });
+      
+      // 通知被移除的成员
+      const targetConnection = storage.getConnection(targetMemberId);
+      if (targetConnection && targetConnection.readyState === WebSocket.OPEN) {
+        targetConnection.send(JSON.stringify({
+          type: 'group_membership_change',
+          groupId,
+          userId: targetMemberId,
+          action: 'removed',
+          byUserId: userId
+        }));
+      }
+      
+      res.json({ message: "成员已移除" });
+    } catch (error) {
+      console.error("移除群组成员时出错:", error);
+      res.status(500).json({ message: "移除群组成员时出错" });
+    }
+  });
+  
+  // 9. 获取群组消息
+  app.get('/api/groups/:groupId/messages', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const messages = await storage.getGroupMessages(groupId);
+      res.json(messages);
+    } catch (error) {
+      console.error("获取群组消息时出错:", error);
+      res.status(500).json({ message: "获取群组消息时出错" });
+    }
+  });
+  
+  // 10. 发送群组消息
+  app.post('/api/groups/:groupId/messages', ensureGroupMember, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const userId = req.user!.id;
+      const { content } = req.body;
+      
+      if (!content) {
+        return res.status(400).json({ message: "消息内容是必需的" });
+      }
+      
+      const message = await storage.createGroupMessage(userId, groupId, content);
+      
+      // 广播消息给群组所有成员
+      await broadcastToGroupMembers(groupId, {
+        type: 'message',
+        message: {
+          ...message,
+          messageType: 'group'
+        }
+      });
+      
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("发送群组消息时出错:", error);
+      res.status(500).json({ message: "发送群组消息时出错" });
+    }
+  });
+  
+  // 11. 更新群组成员角色
+  app.put('/api/groups/:groupId/members/:memberId/role', ensureGroupAdmin, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.groupId);
+      const memberId = parseInt(req.params.memberId);
+      const { role } = req.body;
+      
+      if (!role || !['admin', 'member'].includes(role)) {
+        return res.status(400).json({ message: "有效的角色是 'admin' 或 'member'" });
+      }
+      
+      const updatedMember = await storage.updateGroupMemberRole(groupId, memberId, role);
+      
+      if (!updatedMember) {
+        return res.status(404).json({ message: "找不到群组成员" });
+      }
+      
+      // 通知群组所有成员
+      await broadcastToGroupMembers(groupId, {
+        type: 'group_membership_change',
+        groupId,
+        userId: memberId,
+        action: 'role_changed',
+        byUserId: req.user!.id,
+        newRole: role
+      });
+      
+      res.json(updatedMember);
+    } catch (error) {
+      console.error("更新成员角色时出错:", error);
+      res.status(500).json({ message: "更新成员角色时出错" });
+    }
+  });
 
   return httpServer;
 }
