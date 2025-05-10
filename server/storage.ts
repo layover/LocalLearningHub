@@ -1,7 +1,10 @@
-import { users, messages, contacts, type User, type Message, type Contact, type InsertUser, type InsertMessage, type InsertContact } from "@shared/schema";
+import { users, messages, contacts, friendRequests, type User, type Message, type Contact, type FriendRequest, type InsertUser, type InsertMessage, type InsertContact, type InsertFriendRequest } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { WebSocket } from "ws";
+
+// Create a type for session.Store to fix SessionStore issues
+type SessionStore = session.Store;
 
 const MemoryStore = createMemoryStore(session);
 
@@ -17,13 +20,20 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUserStatus(id: number, isOnline: boolean): Promise<User | undefined>;
   updateUserLastSeen(id: number): Promise<User | undefined>;
-  getAllUsers(): Promise<User[]>; // Add a function to get all users
+  getAllUsers(): Promise<User[]>; 
   
   // Message operations
   getMessages(userId: number, contactId: number): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   markMessagesAsRead(receiverId: number, senderId: number): Promise<void>;
   getUnreadMessageCount(userId: number, contactId: number): Promise<number>;
+  
+  // Friend request operations
+  getFriendRequests(userId: number): Promise<FriendRequest[]>;
+  getFriendRequestById(id: number): Promise<FriendRequest | undefined>;
+  getPendingFriendRequests(userId: number): Promise<FriendRequest[]>;
+  createFriendRequest(request: InsertFriendRequest): Promise<FriendRequest>;
+  updateFriendRequestStatus(id: number, status: string): Promise<FriendRequest | undefined>;
   
   // Contact operations
   getContacts(userId: number): Promise<{ contact: User, unreadCount: number }[]>;
@@ -36,30 +46,79 @@ export interface IStorage {
   getAllConnections(): UserConnection[];
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private messages: Map<number, Message>;
   private contacts: Map<number, Contact>;
+  private friendRequests: Map<number, FriendRequest>;
   private connections: Map<number, WebSocket>;
-  sessionStore: session.SessionStore;
+  sessionStore: SessionStore;
   currentUserId: number;
   currentMessageId: number;
   currentContactId: number;
+  currentFriendRequestId: number;
 
   constructor() {
     this.users = new Map();
     this.messages = new Map();
     this.contacts = new Map();
+    this.friendRequests = new Map();
     this.connections = new Map();
     this.currentUserId = 1;
     this.currentMessageId = 1;
     this.currentContactId = 1;
+    this.currentFriendRequestId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000,
     });
+  }
+
+  // Friend request operations
+  async getFriendRequests(userId: number): Promise<FriendRequest[]> {
+    return Array.from(this.friendRequests.values()).filter(
+      request => request.senderId === userId || request.receiverId === userId
+    );
+  }
+
+  async getFriendRequestById(id: number): Promise<FriendRequest | undefined> {
+    return this.friendRequests.get(id);
+  }
+
+  async getPendingFriendRequests(userId: number): Promise<FriendRequest[]> {
+    return Array.from(this.friendRequests.values()).filter(
+      request => request.receiverId === userId && request.status === 'pending'
+    );
+  }
+
+  async createFriendRequest(request: InsertFriendRequest): Promise<FriendRequest> {
+    const id = this.currentFriendRequestId++;
+    const now = new Date();
+    const friendRequest: FriendRequest = {
+      ...request,
+      id,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.friendRequests.set(id, friendRequest);
+    return friendRequest;
+  }
+
+  async updateFriendRequestStatus(id: number, status: string): Promise<FriendRequest | undefined> {
+    const request = await this.getFriendRequestById(id);
+    if (!request) return undefined;
+
+    const updatedRequest: FriendRequest = { 
+      ...request, 
+      status,
+      updatedAt: new Date()
+    };
+    
+    this.friendRequests.set(id, updatedRequest);
+    return updatedRequest;
   }
 
   // Get all users - implementation for the new interface method
