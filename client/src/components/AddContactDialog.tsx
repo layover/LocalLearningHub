@@ -42,23 +42,24 @@ export function AddContactDialog({ open, onOpenChange }: AddContactDialogProps) 
     },
   });
   
-  // Add contact mutation
-  const addContactMutation = useMutation({
-    mutationFn: async (contactId: number) => {
-      const res = await apiRequest("POST", "/api/contacts", { contactId });
+  // Send friend request mutation
+  const sendFriendRequestMutation = useMutation({
+    mutationFn: async (receiverId: number) => {
+      const res = await apiRequest("POST", "/api/friend-requests", { receiverId });
       return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      // Refresh search results to update UI with new request status
+      handleSearch();
       toast({
-        title: "添加成功",
-        description: "联系人已成功添加",
+        title: "好友请求已发送",
+        description: "等待对方接受您的请求",
       });
-      onOpenChange(false);
     },
     onError: (error: Error) => {
       toast({
-        title: "添加失败",
+        title: "发送请求失败",
         description: error.message,
         variant: "destructive",
       });
@@ -73,9 +74,9 @@ export function AddContactDialog({ open, onOpenChange }: AddContactDialogProps) 
     searchMutation.mutate(searchTerm);
   };
 
-  // Handle add contact
-  const handleAddContact = (contactId: number) => {
-    addContactMutation.mutate(contactId);
+  // Handle send friend request
+  const handleSendFriendRequest = (receiverId: number) => {
+    sendFriendRequestMutation.mutate(receiverId);
   };
 
   // Handle key press in search input
@@ -129,15 +130,35 @@ export function AddContactDialog({ open, onOpenChange }: AddContactDialogProps) 
                     <p className="text-xs text-gray-500">@{user.username}</p>
                   </div>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleAddContact(user.id)}
-                  disabled={addContactMutation.isPending}
-                >
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  添加
-                </Button>
+                {/* Render appropriate button based on friendship status */}
+                {user.isFriend ? (
+                  <Badge variant="outline" className="flex items-center">
+                    <Check className="h-3 w-3 mr-1" />
+                    已添加
+                  </Badge>
+                ) : user.friendRequest?.status === 'pending' ? (
+                  user.friendRequest.isOutgoing ? (
+                    <Badge variant="secondary" className="flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      已请求
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      待接受
+                    </Badge>
+                  )
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleSendFriendRequest(user.id)}
+                    disabled={sendFriendRequestMutation.isPending}
+                  >
+                    <Send className="h-3 w-3 mr-1" />
+                    请求添加
+                  </Button>
+                )}
               </div>
             ))}
           </div>

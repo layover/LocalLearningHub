@@ -13,6 +13,8 @@ interface ChatContextType {
   isLoading: boolean;
   isConnected: boolean;
   markMessagesAsRead: (contactId: number) => void;
+  pendingFriendRequests: any[];
+  respondToFriendRequest: (requestId: number, status: 'accepted' | 'rejected') => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -25,12 +27,24 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const socket = useRef<WebSocket | null>(null);
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
+  const [pendingFriendRequests, setPendingFriendRequests] = useState<any[]>([]);
 
   // Fetch contacts for the current user
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
     queryKey: ['/api/contacts'],
     enabled: !!user,
   });
+  
+  // Fetch pending friend requests
+  const { data: friendRequests = [] } = useQuery({
+    queryKey: ['/api/friend-requests/pending'],
+    enabled: !!user,
+  });
+  
+  // Update state when friend requests change
+  useEffect(() => {
+    setPendingFriendRequests(friendRequests);
+  }, [friendRequests]);
 
   // Connect to WebSocket server
   useEffect(() => {
@@ -97,6 +111,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     }
                     return item;
                   });
+                });
+              }
+              break;
+              
+            case 'friend_request':
+              if (data.request) {
+                // Invalidate pending friend requests query to refresh the list
+                queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
+                
+                toast({
+                  title: "收到好友请求",
+                  description: `用户想要添加您为好友`,
+                });
+              }
+              break;
+              
+            case 'friend_request_response':
+              // Refresh contacts list if request was accepted
+              if (data.status === 'accepted') {
+                queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+                
+                toast({
+                  title: "好友请求已接受",
+                  description: "您现在可以开始聊天了",
+                });
+              } else if (data.status === 'rejected') {
+                toast({
+                  title: "好友请求已拒绝",
+                  description: "对方拒绝了您的好友请求",
+                  variant: "destructive",
                 });
               }
               break;
