@@ -50,6 +50,8 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type InsertContact = z.infer<typeof insertContactSchema>;
 export type User = typeof users.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
