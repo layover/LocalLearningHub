@@ -34,7 +34,7 @@ export interface Contact {
 }
 
 export interface WebSocketMessage {
-  type: 'message' | 'status' | 'read_receipt';
+  type: 'message' | 'status' | 'read_receipt' | 'friend_request' | 'friend_request_response';
   message?: {
     id: number;
     senderId: number;
@@ -46,4 +46,15 @@ export interface WebSocketMessage {
   userId?: number;
   isOnline?: boolean;
   messageIds?: number[];
+  request?: {
+    id: number;
+    senderId: number;
+    receiverId: number;
+    status: string;
+    createdAt: string;
+  };
+  requestId?: number;
+  senderId?: number;
+  receiverId?: number;
+  status?: string;
 }

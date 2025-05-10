@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./use-auth";
 import { Contact, Message, User, WebSocketMessage } from "@/types";
 import { useToast } from "./use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface ChatContextType {
   contacts: Contact[];
@@ -43,7 +44,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   
   // Update state when friend requests change
   useEffect(() => {
-    setPendingFriendRequests(friendRequests);
+    setPendingFriendRequests(friendRequests || []);
   }, [friendRequests]);
 
   // Connect to WebSocket server
@@ -288,6 +289,33 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
     });
   }, [socket, user, isConnected, messages]);
+  
+  // Respond to friend request
+  const respondToFriendRequest = useCallback(async (requestId: number, status: 'accepted' | 'rejected') => {
+    try {
+      await apiRequest('PUT', `/api/friend-requests/${requestId}`, { status });
+      
+      // Update local state
+      setPendingFriendRequests(prev => prev.filter(req => req.id !== requestId));
+      
+      // Refresh contacts list if request was accepted
+      if (status === 'accepted') {
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      }
+      
+      toast({
+        title: status === 'accepted' ? "好友请求已接受" : "好友请求已拒绝",
+        description: status === 'accepted' ? "您已添加该用户为好友" : "您已拒绝该用户的好友请求"
+      });
+      
+    } catch (error) {
+      toast({
+        title: "操作失败",
+        description: (error as Error).message || "请稍后重试",
+        variant: "destructive"
+      });
+    }
+  }, [queryClient, toast]);
 
   return (
     <ChatContext.Provider value={{
@@ -298,7 +326,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       sendMessage,
       isLoading,
       isConnected,
-      markMessagesAsRead
+      markMessagesAsRead,
+      pendingFriendRequests,
+      respondToFriendRequest
     }}>
       {children}
     </ChatContext.Provider>

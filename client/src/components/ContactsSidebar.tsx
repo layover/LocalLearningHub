@@ -1,14 +1,15 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useChat } from "@/hooks/use-chat";
-import { Search, MoreVertical, UserPlus } from "lucide-react";
+import { Search, UserPlus, Check, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useState } from "react";
 import { AddContactDialog } from "./AddContactDialog";
+import { Button } from "@/components/ui/button";
 
 export default function ContactsSidebar() {
   const { user, logoutMutation } = useAuth();
-  const { contacts, selectContact, selectedContact } = useChat();
+  const { contacts, selectContact, selectedContact, pendingFriendRequests } = useChat();
   const [showAddContact, setShowAddContact] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -74,6 +75,55 @@ export default function ContactsSidebar() {
           />
         </div>
       </div>
+      
+      {/* Friend requests panel */}
+      {pendingFriendRequests.length > 0 && (
+        <div className="px-4 py-2 bg-gray-50 border-b">
+          <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+            <UserPlus className="h-4 w-4 mr-1" />
+            待处理好友请求 ({pendingFriendRequests.length})
+          </h3>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {pendingFriendRequests.map((request: any) => (
+              <div key={request.id} className="flex flex-col bg-white rounded-md p-2 shadow-sm border">
+                <div className="flex items-center mb-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary mr-2">
+                    {request.sender.avatar ? (
+                      <img src={request.sender.avatar} alt={request.sender.displayName} className="h-8 w-8 rounded-full object-cover" />
+                    ) : (
+                      request.sender.displayName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-sm font-medium truncate">{request.sender.displayName}</p>
+                    <p className="text-xs text-gray-500 truncate">@{request.sender.username}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="default" 
+                    className="flex-1"
+                    onClick={() => useChat().respondToFriendRequest(request.id, 'accepted')}
+                  >
+                    <Check className="h-3 w-3 mr-1" />
+                    接受
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => useChat().respondToFriendRequest(request.id, 'rejected')}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    拒绝
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Contacts list */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
