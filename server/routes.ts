@@ -188,9 +188,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       receiverId
     });
     
+    // Get sender information to include in the notification
+    const sender = await storage.getUser(senderId);
+    if (!sender) {
+      return res.status(500).json({ message: 'Failed to get sender information' });
+    }
+    
+    // Remove sensitive information
+    const { password: _, ...safeSender } = sender;
+    
     // Notify the receiver through WebSocket if they're online
     const receiverSocket = storage.getConnection(receiverId);
     if (receiverSocket && receiverSocket.readyState === WebSocket.OPEN) {
+      console.log(`Sending friend request notification to user ${receiverId} from user ${senderId}`);
       receiverSocket.send(JSON.stringify({
         type: 'friend_request',
         request: {
@@ -198,9 +208,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           senderId: friendRequest.senderId,
           receiverId: friendRequest.receiverId,
           status: friendRequest.status,
-          createdAt: friendRequest.createdAt.toISOString()
+          createdAt: friendRequest.createdAt.toISOString(),
+          sender: safeSender // Include sender information
         }
       }));
+    } else {
+      console.log(`User ${receiverId} is not online, could not send real-time notification`);
     }
     
     res.status(201).json(friendRequest);

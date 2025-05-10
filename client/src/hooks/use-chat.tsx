@@ -122,13 +122,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               
             case 'friend_request':
               if (data.request) {
+                console.log("收到好友请求:", data.request);
                 // Invalidate pending friend requests query to refresh the list
                 queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
                 
-                toast({
-                  title: "收到好友请求",
-                  description: `用户想要添加您为好友`,
-                });
+                // Display notification with sender info
+                if (data.request.sender) {
+                  toast({
+                    title: "收到好友请求",
+                    description: `${data.request.sender.displayName || data.request.sender.username || '用户'} 想要添加您为好友`,
+                  });
+                } else {
+                  // Fallback if sender info is not included
+                  toast({
+                    title: "收到好友请求",
+                    description: `有用户想要添加您为好友`,
+                  });
+                  
+                  console.log("好友请求中无发送者信息");
+                }
               }
               break;
               
