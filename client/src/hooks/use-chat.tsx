@@ -13,8 +13,8 @@ interface ChatContextType {
   selectedGroup: Group | null;
   selectContact: (contact: Contact) => void;
   selectGroup: (group: Group | null) => void;
-  sendMessage: (content: string) => void;
-  sendGroupMessage: (content: string, groupId: number) => void;
+  sendMessage: (content: string, fileUrl?: string, fileType?: string, fileName?: string) => void;
+  sendGroupMessage: (content: string, groupId: number, fileUrl?: string, fileType?: string, fileName?: string) => void;
   isLoading: boolean;
   isConnected: boolean;
   markMessagesAsRead: (contactId: number) => void;

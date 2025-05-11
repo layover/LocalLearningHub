@@ -280,18 +280,24 @@ export default function GroupChatArea() {
       const messageContent = message.trim();
       
       // 发送消息
-      if (chatSendGroupMessage && !fileUrl) {
-        // 使用现有的发送方法发送纯文本消息
-        await chatSendGroupMessage(messageContent, selectedGroup.id);
+      if (chatSendGroupMessage) {
+        // 使用钩子中的方法发送消息，同时传递文件信息
+        await chatSendGroupMessage(
+          messageContent || "发送了一个文件", 
+          selectedGroup.id,
+          fileUrl || undefined,
+          fileType || undefined,
+          fileName || undefined
+        );
       } else {
-        // 发送带有文件或者后备方法
+        // 后备方法：直接使用API发送消息
         const response = await fetch(`/api/groups/${selectedGroup.id}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            content: messageContent,
+            content: messageContent || "发送了一个文件",
             senderId: user.id,
             groupId: selectedGroup.id,
             fileUrl,
