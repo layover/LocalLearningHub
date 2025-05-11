@@ -318,56 +318,66 @@ export default function ChatArea() {
                         isSentByMe ? 'chat-bubble-sent' : 'chat-bubble-received'
                       } px-4 py-2 max-w-xs sm:max-w-md`}
                     >
-                      <p className="text-sm">{message.content}</p>
-                      
-                      {/* 显示文件附件 */}
-                      {message.fileUrl ? (
-                        <div className="mt-2">
-                          {/* 渲染文件附件并在控制台输出信息 */}
+                      {/* 根据消息类型显示不同内容 */}
+                      {message.messageType === 'file' ? (
+                        <>
+                          <p className="text-sm mb-1">{message.content}</p>
                           {(() => {
-                            console.log("渲染文件附件:", message.fileUrl, message.fileType, message.fileName);
+                            console.log("渲染文件类型消息:", {
+                              id: message.id,
+                              type: message.messageType,
+                              fileUrl: message.fileUrl,
+                              fileType: message.fileType,
+                              fileName: message.fileName
+                            });
                             return null;
                           })()}
-                          {message.fileType?.startsWith('image/') ? (
-                            // 图片预览
-                            <a 
-                              href={message.fileUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="block"
-                            >
-                              <img 
-                                src={message.fileUrl} 
-                                alt={message.fileName || "图片附件"} 
-                                className="max-w-full max-h-48 rounded-md cursor-pointer hover:opacity-90"
-                              />
-                            </a>
-                          ) : (
-                            // 其他文件类型
-                            <a 
-                              href={message.fileUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="flex items-center p-2 border rounded-md bg-gray-50 hover:bg-gray-100"
-                            >
-                              {message.fileType && getFileIcon(message.fileType)}
-                              <div className="flex-1 truncate">
-                                <div className="text-sm font-medium">{message.fileName || "文件下载"}</div>
-                                {message.fileType && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {getFileTypeLabel(message.fileType)}
+                          
+                          {message.fileUrl ? (
+                            <div className="mt-2">
+                              {message.fileType?.startsWith('image/') ? (
+                                // 图片预览
+                                <a 
+                                  href={message.fileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="block"
+                                >
+                                  <img 
+                                    src={message.fileUrl} 
+                                    alt={message.fileName || "图片附件"} 
+                                    className="max-w-full max-h-48 rounded-md cursor-pointer hover:opacity-90"
+                                  />
+                                </a>
+                              ) : (
+                                // 其他文件类型
+                                <a 
+                                  href={message.fileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center p-2 border rounded-md bg-gray-50 hover:bg-gray-100"
+                                >
+                                  {message.fileType && getFileIcon(message.fileType)}
+                                  <div className="flex-1 truncate">
+                                    <div className="text-sm font-medium">{message.fileName || "文件下载"}</div>
+                                    {message.fileType && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {getFileTypeLabel(message.fileType)}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            </a>
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-red-500">
+                              [文件附件丢失 - 无法显示]
+                            </div>
                           )}
-                        </div>
+                        </>
                       ) : (
-                        message.messageType === 'file' && (
-                          <div className="mt-2 text-xs text-red-500">
-                            [文件附件丢失 - 消息类型为file但无fileUrl]
-                          </div>
-                        )
+                        // 普通文本消息
+                        <p className="text-sm">{message.content}</p>
                       )}
                     </div>
                     <div className={`flex items-center ${isSentByMe ? 'justify-end' : ''} mt-1`}>

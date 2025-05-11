@@ -516,6 +516,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const fileMessages = messages.filter(msg => msg.fileUrl);
     if (fileMessages.length > 0) {
       console.log(`找到 ${fileMessages.length} 条带有文件附件的消息:`, fileMessages);
+      
+      // 确保文件消息的messageType设置为'file'
+      messages.forEach(msg => {
+        if (msg.fileUrl && msg.messageType !== 'file') {
+          console.log(`修正消息类型(ID=${msg.id}): ${msg.messageType} -> file`);
+          msg.messageType = 'file';
+        }
+      });
     } else {
       console.log('未找到带有文件附件的消息');
     }
