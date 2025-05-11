@@ -88,6 +88,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           switch (data.type) {
             case 'message':
               if (data.message) {
+                // 打印收到的消息内容，用于调试
+                console.log("收到WebSocket消息:", data.message);
+                
                 const message = {
                   ...data.message,
                   createdAt: data.message.createdAt // 保持字符串格式
