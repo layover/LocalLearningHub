@@ -337,24 +337,37 @@ export default function ChatArea() {
                             <div className="mt-2">
                               {message.fileType?.startsWith('image/') ? (
                                 // 图片预览
-                                <a 
-                                  href={message.fileUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="block"
-                                >
-                                  <img 
-                                    src={message.fileUrl} 
-                                    alt={message.fileName || "图片附件"} 
-                                    className="max-w-full max-h-48 rounded-md cursor-pointer hover:opacity-90"
-                                  />
-                                </a>
+                                <div className="flex flex-col">
+                                  <div className="mb-2">
+                                    <img 
+                                      src={message.fileUrl} 
+                                      alt={message.fileName || "图片附件"} 
+                                      className="max-w-full max-h-48 rounded-md cursor-pointer hover:opacity-90"
+                                    />
+                                  </div>
+                                  <div className="flex">
+                                    <a 
+                                      href={message.fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-500 mr-4"
+                                    >
+                                      查看原图
+                                    </a>
+                                    <a 
+                                      href={message.fileUrl} 
+                                      download={message.fileName || "图片下载"}
+                                      className="text-xs text-blue-500"
+                                    >
+                                      下载图片
+                                    </a>
+                                  </div>
+                                </div>
                               ) : (
                                 // 其他文件类型
                                 <a 
                                   href={message.fileUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
+                                  download={message.fileName || "下载文件"}
                                   className="flex items-center p-2 border rounded-md bg-gray-50 hover:bg-gray-100"
                                 >
                                   {message.fileType && getFileIcon(message.fileType)}

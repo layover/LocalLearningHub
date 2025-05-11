@@ -698,20 +698,38 @@ export default function GroupChatArea() {
                               {msg.fileUrl && (
                                 <div className="mt-1">
                                   {msg.fileType?.startsWith('image/') ? (
-                                    // 图片文件直接显示
-                                    <div className="mt-2">
-                                      <img 
-                                        src={msg.fileUrl} 
-                                        alt={msg.fileName || "图片"}
-                                        className="max-w-full rounded-md max-h-[200px] object-contain"
-                                      />
+                                    // 图片文件显示并提供查看/下载选项
+                                    <div className="flex flex-col">
+                                      <div className="mb-2">
+                                        <img 
+                                          src={msg.fileUrl} 
+                                          alt={msg.fileName || "图片"}
+                                          className="max-w-full rounded-md max-h-[200px] object-contain"
+                                        />
+                                      </div>
+                                      <div className="flex">
+                                        <a 
+                                          href={msg.fileUrl} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-blue-500 mr-4"
+                                        >
+                                          查看原图
+                                        </a>
+                                        <a 
+                                          href={msg.fileUrl} 
+                                          download={msg.fileName || "图片下载"}
+                                          className="text-xs text-blue-500"
+                                        >
+                                          下载图片
+                                        </a>
+                                      </div>
                                     </div>
                                   ) : (
-                                    // 其他文件显示为链接
+                                    // 其他文件显示为链接，支持下载
                                     <a 
                                       href={msg.fileUrl} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
+                                      download={msg.fileName || "文件下载"}
                                       className="flex items-center gap-2 p-2 bg-background rounded-md"
                                     >
                                       {getAttachmentIcon(msg.fileType)}
