@@ -42,7 +42,7 @@ export interface IStorage {
   
   // 群组消息操作
   getGroupMessages(groupId: number): Promise<Message[]>;
-  createGroupMessage(senderId: number, groupId: number, content: string): Promise<Message>;
+  createGroupMessage(senderId: number, groupId: number, content: string, fileUrl?: string, fileType?: string, fileName?: string, messageType?: string): Promise<Message>;
   
   // Friend request operations
   getFriendRequests(userId: number): Promise<FriendRequest[]>;
@@ -599,8 +599,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(messages.createdAt));
   }
   
-  async createGroupMessage(senderId: number, groupId: number, content: string): Promise<Message> {
-    console.log(`创建群组消息: 用户 ${senderId} 在群组 ${groupId} 发送消息`);
+  async createGroupMessage(
+    senderId: number, 
+    groupId: number, 
+    content: string,
+    fileUrl?: string,
+    fileType?: string,
+    fileName?: string,
+    messageType: string = 'group'
+  ): Promise<Message> {
+    console.log(`创建群组消息: 用户 ${senderId} 在群组 ${groupId} 发送消息 ${fileUrl ? '(带附件)' : ''}`);
     const [message] = await db
       .insert(messages)
       .values({
@@ -608,7 +616,11 @@ export class DatabaseStorage implements IStorage {
         content,
         receiverId: null,
         groupId,
-        messageType: 'group'
+        read: false,
+        messageType,
+        fileUrl,
+        fileType,
+        fileName
       } as any)
       .returning();
     

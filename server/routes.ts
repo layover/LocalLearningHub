@@ -886,17 +886,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // 创建消息
-      const message = await storage.createMessage({
-        senderId: userId,
-        receiverId: null,
-        groupId: groupId,
-        content: content || '',
-        read: false,
-        messageType: messageType || 'text',
+      const message = await storage.createGroupMessage(
+        userId,
+        groupId,
+        content || '',
         fileUrl,
         fileType,
-        fileName
-      });
+        fileName,
+        messageType || 'text'
+      );
       
       // 广播消息给群组所有成员
       await broadcastToGroupMembers(groupId, {
