@@ -129,7 +129,20 @@ export default function GroupChatArea() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // 检查文件大小
+      if (file.size > 10 * 1024 * 1024) { // 10MB限制
+        toast({
+          title: "文件过大",
+          description: "请选择小于10MB的文件",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       setSelectedFile(file);
+      
+      // 清空input，允许相同文件再次选择
+      e.target.value = '';
     }
   };
   
