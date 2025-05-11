@@ -321,8 +321,13 @@ export default function ChatArea() {
                       <p className="text-sm">{message.content}</p>
                       
                       {/* 显示文件附件 */}
-                      {message.fileUrl && (
+                      {message.fileUrl ? (
                         <div className="mt-2">
+                          {/* 渲染文件附件并在控制台输出信息 */}
+                          {(() => {
+                            console.log("渲染文件附件:", message.fileUrl, message.fileType, message.fileName);
+                            return null;
+                          })()}
                           {message.fileType?.startsWith('image/') ? (
                             // 图片预览
                             <a 
@@ -357,6 +362,12 @@ export default function ChatArea() {
                             </a>
                           )}
                         </div>
+                      ) : (
+                        message.messageType === 'file' && (
+                          <div className="mt-2 text-xs text-red-500">
+                            [文件附件丢失 - 消息类型为file但无fileUrl]
+                          </div>
+                        )
                       )}
                     </div>
                     <div className={`flex items-center ${isSentByMe ? 'justify-end' : ''} mt-1`}>

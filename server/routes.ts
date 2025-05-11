@@ -118,8 +118,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const savedGroupMessage = await storage.createGroupMessage(
                 user.id,
                 message.message.groupId,
-                message.message.content
+                message.message.content,
+                message.message.fileUrl,
+                message.message.fileType,
+                message.message.fileName
               );
+              
+              console.log("已保存群组消息(包含文件):", JSON.stringify(savedGroupMessage, null, 2));
               
               // 广播消息给所有群组成员
               await broadcastToGroupMembers(message.message.groupId, {
@@ -133,7 +138,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               break;
             } else {
               // 处理私聊消息
-              console.log("处理私聊消息:", message.message);
+              console.log("收到私聊消息:", message.message);
+              
+              if (message.message.fileUrl) {
+                console.log("检测到文件附件:", {
+                  fileUrl: message.message.fileUrl, 
+                  fileType: message.message.fileType, 
+                  fileName: message.message.fileName,
+                  messageType: message.message.messageType
+                });
+              }
               
               // 准备消息数据（包括文件附件信息）
               const messageData: any = {
@@ -148,9 +162,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 messageData.fileUrl = message.message.fileUrl;
                 messageData.fileType = message.message.fileType;
                 messageData.fileName = message.message.fileName;
+                
+                // 如果是文件类型的消息，确保messageType设置正确
+                if (messageData.messageType !== 'file') {
+                  console.log(`修正消息类型: ${messageData.messageType} -> file`);
+                  messageData.messageType = 'file';
+                }
               }
               
+              console.log("验证前的消息数据:", messageData);
               const validatedMessage = insertMessageSchema.parse(messageData);
+              console.log("验证后的消息数据:", validatedMessage);
               
               // Store message
               const savedMessage = await storage.createMessage(validatedMessage);
@@ -159,14 +181,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (validatedMessage.receiverId) {
                 const recipientSocket = storage.getConnection(validatedMessage.receiverId);
                 if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
-                  recipientSocket.send(JSON.stringify({
+                  console.log("发送消息给接收者:", validatedMessage.receiverId);
+                  const messageToSend = {
                     type: 'message',
                     message: savedMessage
-                  }));
+                  };
+                  console.log("发送的消息内容:", JSON.stringify(messageToSend, null, 2));
+                  recipientSocket.send(JSON.stringify(messageToSend));
+                } else {
+                  console.log(`接收者 ${validatedMessage.receiverId} 不在线或WebSocket未连接`);
                 }
               }
               
               // Send confirmation back to sender
+              console.log("发送确认消息给发送者");
               ws.send(JSON.stringify({
                 type: 'message',
                 message: savedMessage
