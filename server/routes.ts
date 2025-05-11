@@ -1,4 +1,4 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import express, { type Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
@@ -19,6 +19,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Create HTTP server
   const httpServer = createServer(app);
+  
+  // 设置文件上传目录
+  const uploadDir = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+  
+  // 配置multer用于文件上传
+  const fileStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      // 生成唯一文件名，保留原始扩展名
+      const uniqueFileName = `${uuidv4()}${path.extname(file.originalname)}`;
+      cb(null, uniqueFileName);
+    }
+  });
+  
+  const upload = multer({ 
+    storage: fileStorage,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 限制10MB
+    }
+  });
   
   // Setup WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -907,6 +932,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "更新成员角色时出错" });
     }
   });
+  
+  // 文件上传路由
+  app.post('/api/upload', ensureAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      
+      // 获取上传的文件信息
+      const file = req.file;
+      
+      // 构建文件URL（相对路径）
+      const fileUrl = `/uploads/${file.filename}`;
+      
+      // 返回文件URL和其他信息
+      res.json({
+        fileUrl,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size
+      });
+      
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // 静态文件服务，提供对上传文件的访问
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   return httpServer;
 }
