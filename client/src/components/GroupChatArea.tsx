@@ -258,17 +258,24 @@ export default function GroupChatArea() {
         formData.append("file", selectedFile);
         formData.append("groupId", selectedGroup.id.toString());
         
+        console.log("开始上传群组文件:", selectedFile.name, "大小:", selectedFile.size);
+        
         // 上传文件
         const uploadResponse = await fetch('/api/upload', {
           method: 'POST',
           body: formData
         });
         
+        console.log("群组文件上传响应状态:", uploadResponse.status);
+        const responseText = await uploadResponse.text();
+        console.log("群组文件上传响应内容:", responseText);
+        
         if (!uploadResponse.ok) {
-          throw new Error("文件上传失败");
+          throw new Error(`群组文件上传失败: ${responseText}`);
         }
         
-        const uploadResult = await uploadResponse.json();
+        // 将响应文本解析为JSON
+        const uploadResult = JSON.parse(responseText);
         fileUrl = uploadResult.fileUrl;
         fileType = selectedFile.type;
         fileName = selectedFile.name;
