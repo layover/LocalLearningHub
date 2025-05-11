@@ -132,11 +132,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log("已保存群组消息(包含文件):", JSON.stringify(savedGroupMessage, null, 2));
               
               // 广播消息给所有群组成员
+              // 检查是否为文件消息
+              const isFileMessage = savedGroupMessage.fileUrl !== undefined && savedGroupMessage.fileUrl !== null;
+              
+              // 广播消息给所有群组成员
               await broadcastToGroupMembers(message.message.groupId, {
                 type: 'message',
                 message: {
                   ...savedGroupMessage,
-                  messageType: 'group'
+                  // 如果是文件消息，设置messageType为'file'，否则为'group'
+                  messageType: isFileMessage ? 'file' : 'group'
                 }
               });
               
@@ -970,12 +975,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messageType || 'text'
       );
       
+      // 检查是否为文件消息
+      const hasFileAttachment = message.fileUrl !== undefined && message.fileUrl !== null;
+      console.log(`准备广播群组消息 - 文件附件检查: ${hasFileAttachment ? '是' : '否'}, 文件URL: ${message.fileUrl}`);
+      
       // 广播消息给群组所有成员
       await broadcastToGroupMembers(groupId, {
         type: 'message',
         message: {
           ...message,
-          messageType: messageType || 'group'
+          // 如果有文件附件，设置messageType为'file'，否则为'group'
+          messageType: hasFileAttachment ? 'file' : (messageType || 'group')
         }
       });
       
