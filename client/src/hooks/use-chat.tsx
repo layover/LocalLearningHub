@@ -126,6 +126,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                   }
                 } else {
                   // 更新私聊消息
+                  // 检查是否包含文件附件，确保messageType设置为'file'
+                  if (message.fileUrl && message.messageType !== 'file') {
+                    console.log(`客户端修正消息类型: ${message.messageType} -> file`);
+                    message.messageType = 'file';
+                  }
+                  
+                  // 如果是文件消息，再检查一次字段是否完整
+                  if (message.fileUrl) {
+                    console.log("私聊文件附件消息:", {
+                      id: message.id,
+                      fileUrl: message.fileUrl,
+                      fileType: message.fileType,
+                      fileName: message.fileName,
+                      messageType: message.messageType
+                    });
+                  }
+                  
                   setMessages(prev => {
                     const contactId = message.senderId === user.id 
                       ? message.receiverId 

@@ -114,14 +114,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 break;
               }
               
+              // 准备群组消息数据（处理可能的null值）
+              const fileUrl = message.message.fileUrl || undefined;
+              const fileType = message.message.fileType || undefined;
+              const fileName = message.message.fileName || undefined;
+              
               // 创建群组消息
               const savedGroupMessage = await storage.createGroupMessage(
                 user.id,
                 message.message.groupId,
                 message.message.content,
-                message.message.fileUrl,
-                message.message.fileType,
-                message.message.fileName
+                fileUrl,
+                fileType,
+                fileName
               );
               
               console.log("已保存群组消息(包含文件):", JSON.stringify(savedGroupMessage, null, 2));
