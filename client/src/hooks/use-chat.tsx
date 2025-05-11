@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./use-auth";
-import { Contact, Message, User, WebSocketMessage, Group } from "@/types";
+import { Contact, Message, User, WebSocketMessage, Group, FriendRequest } from "@/types";
 import { useToast } from "./use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -102,7 +102,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     return {
                       ...prev,
                       [groupId]: groupMessages.sort((a, b) => 
-                        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                        // 使用字符串比较而不是转换为Date对象
+                        a.createdAt.localeCompare(b.createdAt)
                       )
                     };
                   });
@@ -131,7 +132,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     return {
                       ...prev,
                       [contactId as number]: contactMessages.sort((a, b) => 
-                        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                        // 使用字符串比较而不是转换为Date对象
+                        a.createdAt.localeCompare(b.createdAt)
                       )
                     };
                   });
