@@ -120,8 +120,8 @@ export default function GroupChatArea() {
     const currentUserMember = membersData.find(m => m.user.id === user.id);
     if (currentUserMember) {
       // 使用字符串比较，避免类型问题
-      const role = currentUserMember.member.role;
-      setIsAdmin(role === 'admin' || role === 'owner');
+      const memberRole = String(currentUserMember.member.role);
+      setIsAdmin(memberRole === 'admin' || memberRole === 'owner');
     }
   }, [selectedGroup, user, membersData]);
   

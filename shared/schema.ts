@@ -25,9 +25,13 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   read: boolean("read").default(false),
-  // 新增：消息类型和群组ID
-  messageType: text("message_type").default("personal").notNull(), // personal, group
+  // 消息类型和群组ID
+  messageType: text("message_type").default("text").notNull(), // text, file, direct, group
   groupId: integer("group_id").references(() => groups.id),
+  // 文件附件相关字段
+  fileUrl: text("file_url"),
+  fileType: text("file_type"),
+  fileName: text("file_name")
 });
 
 export const friendRequests = pgTable("friend_requests", {
@@ -92,6 +96,9 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   read: true,
   messageType: true,
   groupId: true,
+  fileUrl: true,
+  fileType: true,
+  fileName: true,
 });
 
 export const insertFriendRequestSchema = createInsertSchema(friendRequests).omit({
@@ -160,6 +167,9 @@ export interface ChatMessage {
     read: boolean;
     messageType?: string;
     groupId?: number;
+    fileUrl?: string | null;
+    fileType?: string | null;
+    fileName?: string | null;
   };
 }
 
