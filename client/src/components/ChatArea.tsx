@@ -295,8 +295,17 @@ export default function ChatArea() {
             {group.messages.map((message, messageIndex) => {
               const isSentByMe = message.senderId === user?.id;
               
-              // 调试日志，输出消息详细信息
+              // 添加调试日志来跟踪消息渲染
               console.log("渲染消息:", message.id, "文件URL:", message.fileUrl, "文件类型:", message.fileType, "消息类型:", message.messageType);
+              if (message.fileUrl) {
+                console.log("渲染文件类型消息:", {
+                  id: message.id,
+                  type: message.messageType,
+                  fileUrl: message.fileUrl,
+                  fileType: message.fileType,
+                  fileName: message.fileName
+                });
+              }
               
               return (
                 <div 

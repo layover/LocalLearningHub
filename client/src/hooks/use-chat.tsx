@@ -91,6 +91,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 // 打印收到的消息内容，用于调试
                 console.log("收到WebSocket消息:", data.message);
                 
+                // 检查消息是否包含文件附件，确保messageType设置为'file'
+                if (data.message.fileUrl && data.message.messageType !== 'file') {
+                  console.log(`客户端接收时修正消息类型: ${data.message.messageType} -> file`);
+                  data.message.messageType = 'file';
+                }
+                
+                // 如果包含文件附件，记录详细信息用于调试
+                if (data.message.fileUrl) {
+                  console.log("私聊文件附件消息:", {
+                    id: data.message.id,
+                    fileUrl: data.message.fileUrl,
+                    fileType: data.message.fileType,
+                    fileName: data.message.fileName,
+                    messageType: data.message.messageType
+                  });
+                }
+                
                 const message = {
                   ...data.message,
                   createdAt: data.message.createdAt // 保持字符串格式
