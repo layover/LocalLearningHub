@@ -187,10 +187,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const recipientSocket = storage.getConnection(validatedMessage.receiverId);
                 if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
                   console.log("发送消息给接收者:", validatedMessage.receiverId);
-                  const messageToSend = {
+                  // 确保文件消息类型设置为file
+                  let messageToSend: WebSocketMessage = {
                     type: 'message',
                     message: savedMessage
                   };
+                  
+                  // 如果消息包含文件，强制设置messageType为'file'
+                  if (savedMessage.fileUrl) {
+                    console.log("检测到文件消息，设置messageType=file");
+                    messageToSend.message.messageType = 'file';
+                  }
                   console.log("发送的消息内容:", JSON.stringify(messageToSend, null, 2));
                   recipientSocket.send(JSON.stringify(messageToSend));
                 } else {
