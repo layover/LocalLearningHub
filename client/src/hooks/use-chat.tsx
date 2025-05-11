@@ -415,7 +415,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient]);
 
-  const sendMessage = useCallback((content: string) => {
+  const sendMessage = useCallback((
+    content: string, 
+    fileUrl?: string, 
+    fileType?: string, 
+    fileName?: string
+  ) => {
     if (!socket.current || !user || !selectedContact || !isConnected) {
       toast({
         title: "发送失败",
@@ -424,6 +429,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+    
+    // 确定消息类型
+    const messageType = fileUrl ? 'file' : 'direct';
     
     const message: WebSocketMessage = {
       type: 'message',
@@ -434,7 +442,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         content,
         createdAt: new Date().toISOString(),
         read: false,
-        messageType: 'direct'
+        messageType,
+        fileUrl,
+        fileType,
+        fileName
       }
     };
     
@@ -442,7 +453,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [socket, user, selectedContact, isConnected, toast]);
   
   // 发送群组消息
-  const sendGroupMessage = useCallback((content: string, groupId: number) => {
+  const sendGroupMessage = useCallback((
+    content: string, 
+    groupId: number,
+    fileUrl?: string, 
+    fileType?: string, 
+    fileName?: string
+  ) => {
     if (!socket.current || !user || !isConnected) {
       toast({
         title: "发送失败",
@@ -451,6 +468,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+    
+    // 确定消息类型
+    const messageType = fileUrl ? 'file' : 'group';
     
     const message: WebSocketMessage = {
       type: 'message',
@@ -462,7 +482,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         content,
         createdAt: new Date().toISOString(),
         read: true,
-        messageType: 'group'
+        messageType,
+        fileUrl,
+        fileType,
+        fileName
       }
     };
     

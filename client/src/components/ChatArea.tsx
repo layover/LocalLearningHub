@@ -1,16 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
-import { Menu, Phone, Video, Paperclip, Send } from "lucide-react";
+import { Menu, Phone, Video, Paperclip, Send, FileIcon, ImageIcon, FileAudio, FileVideo } from "lucide-react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ChatArea() {
   const { user } = useAuth();
   const { selectedContact, messages, sendMessage, markMessagesAsRead } = useChat();
   const [newMessage, setNewMessage] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileUploading, setFileUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
   
   // Get messages for selected contact
   const contactMessages = selectedContact 
@@ -47,13 +52,119 @@ export default function ChatArea() {
     };
   }, [selectedContact, markMessagesAsRead]);
   
+  // 处理文件选择
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 检查文件大小
+      if (file.size > 10 * 1024 * 1024) { // 10MB限制
+        toast({
+          title: "文件过大",
+          description: "请选择小于10MB的文件",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setSelectedFile(file);
+      
+      // 清空input，允许相同文件再次选择
+      e.target.value = '';
+    }
+  };
+  
+  // 取消选择文件
+  const handleCancelFile = () => {
+    setSelectedFile(null);
+  };
+  
+  // 获取文件类型对应的图标
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) {
+      return <ImageIcon className="h-4 w-4 inline-block mr-2" />;
+    } else if (fileType.startsWith('audio/')) {
+      return <FileAudio className="h-4 w-4 inline-block mr-2" />;
+    } else if (fileType.startsWith('video/')) {
+      return <FileVideo className="h-4 w-4 inline-block mr-2" />;
+    } else {
+      return <FileIcon className="h-4 w-4 inline-block mr-2" />;
+    }
+  };
+  
+  // 格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    else return (bytes / 1073741824).toFixed(1) + ' GB';
+  };
+  
+  // 获取文件类型标签
+  const getFileTypeLabel = (fileType: string): string => {
+    if (fileType.startsWith('image/')) {
+      return `图片 ${fileType.replace('image/', '')}`;
+    } else if (fileType.startsWith('audio/')) {
+      return `音频 ${fileType.replace('audio/', '')}`;
+    } else if (fileType.startsWith('video/')) {
+      return `视频 ${fileType.replace('video/', '')}`;
+    } else {
+      return `文件 ${fileType.split('/').pop() || fileType}`;
+    }
+  };
+  
+  // 打开文件选择对话框
+  const openFileSelector = () => {
+    fileInputRef.current?.click();
+  };
+
   // Handle sending a new message
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedContact) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedContact) return;
     
-    sendMessage(newMessage);
-    setNewMessage("");
+    try {
+      // 如果有选择文件，先上传文件
+      if (selectedFile) {
+        setFileUploading(true);
+        
+        // 创建FormData对象来上传文件
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("contactId", selectedContact.contact.id.toString());
+        
+        // 上传文件
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error("文件上传失败");
+        }
+        
+        const fileData = await uploadResponse.json();
+        
+        // 发送带有文件信息的消息
+        sendMessage(newMessage || "发送了一个文件", fileData.fileUrl, selectedFile.type, selectedFile.name);
+        
+        // 重置状态
+        setSelectedFile(null);
+        setFileUploading(false);
+      } else {
+        // 发送普通文本消息
+        sendMessage(newMessage);
+      }
+      
+      setNewMessage("");
+    } catch (error) {
+      console.error("发送消息失败", error);
+      setFileUploading(false);
+      toast({
+        title: "发送失败",
+        description: error instanceof Error ? error.message : "未知错误",
+        variant: "destructive"
+      });
+    }
   };
   
   // Group messages by date
@@ -198,6 +309,45 @@ export default function ChatArea() {
                       } px-4 py-2 max-w-xs sm:max-w-md`}
                     >
                       <p className="text-sm">{message.content}</p>
+                      
+                      {/* 显示文件附件 */}
+                      {message.fileUrl && (
+                        <div className="mt-2">
+                          {message.fileType?.startsWith('image/') ? (
+                            // 图片预览
+                            <a 
+                              href={message.fileUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="block"
+                            >
+                              <img 
+                                src={message.fileUrl} 
+                                alt={message.fileName || "图片附件"} 
+                                className="max-w-full max-h-48 rounded-md cursor-pointer hover:opacity-90"
+                              />
+                            </a>
+                          ) : (
+                            // 其他文件类型
+                            <a 
+                              href={message.fileUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex items-center p-2 border rounded-md bg-gray-50 hover:bg-gray-100"
+                            >
+                              {message.fileType && getFileIcon(message.fileType)}
+                              <div className="flex-1 truncate">
+                                <div className="text-sm font-medium">{message.fileName || "文件下载"}</div>
+                                {message.fileType && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {getFileTypeLabel(message.fileType)}
+                                  </div>
+                                )}
+                              </div>
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className={`flex items-center ${isSentByMe ? 'justify-end' : ''} mt-1`}>
                       <p className="text-xs text-gray-500">{formatMessageTime(message.createdAt)}</p>
@@ -219,23 +369,73 @@ export default function ChatArea() {
       
       {/* Message input */}
       <div className="border-t border-gray-200 p-4 bg-white">
+        {/* 文件预览 */}
+        {selectedFile && (
+          <div className="mb-3 p-3 border border-gray-200 rounded-md bg-gray-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                {getFileIcon(selectedFile.type)}
+                <div className="ml-2">
+                  <p className="text-sm font-medium truncate max-w-[200px]">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-500">{formatFileSize(selectedFile.size)}</p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={handleCancelFile}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+        
         <form onSubmit={handleSendMessage} className="flex items-center">
-          <button type="button" className="text-gray-500 hover:text-gray-700 mr-3">
+          {/* 隐藏的文件输入 */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          
+          {/* 文件附件按钮 */}
+          <button 
+            type="button" 
+            onClick={openFileSelector}
+            className="text-gray-500 hover:text-gray-700 mr-3"
+            disabled={fileUploading}
+          >
             <Paperclip className="h-6 w-6" />
           </button>
+          
+          {/* 消息输入框 */}
           <input 
             type="text" 
-            placeholder="输入消息..." 
+            placeholder={selectedFile ? "添加消息(可选)..." : "输入消息..."} 
             className="flex-1 border border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
+            disabled={fileUploading}
           />
+          
+          {/* 发送按钮 */}
           <button 
             type="submit" 
             className="bg-primary hover:bg-indigo-700 text-white rounded-full p-2 ml-3"
-            disabled={!newMessage.trim()}
+            disabled={(fileUploading || (!newMessage.trim() && !selectedFile))}
           >
-            <Send className="h-5 w-5" />
+            {fileUploading ? (
+              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
           </button>
         </form>
       </div>
