@@ -18,7 +18,7 @@ interface ChatContextType {
   isLoading: boolean;
   isConnected: boolean;
   markMessagesAsRead: (contactId: number) => void;
-  pendingFriendRequests: any[];
+  // 直接使用friendRequests而不是pendingFriendRequests
   respondToFriendRequest: (requestId: number, status: 'accepted' | 'rejected') => void;
   userGroups: Group[];
   isLoadingGroups: boolean;
@@ -36,7 +36,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const socket = useRef<WebSocket | null>(null);
   const [messages, setMessages] = useState<Record<number, Message[]>>({});
   const [groupMessages, setGroupMessages] = useState<Record<number, Message[]>>({});
-  const [pendingFriendRequests, setPendingFriendRequests] = useState<any[]>([]);
+  // 已移除pendingFriendRequests状态，直接使用friendRequests
 
   // Fetch contacts for the current user
   const { data: contacts = [], isLoading, refetch: refetchContacts } = useQuery<Contact[]>({
@@ -59,15 +59,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     refetchInterval: 10000, // 每10秒自动刷新一次
   });
   
-  // 使用useEffect来处理请求数据变化
-  useEffect(() => {
-    console.log("pendingFriendRequests数据更新:", friendRequests);
-    if (Array.isArray(friendRequests)) {
-      setPendingFriendRequests(friendRequests);
-    }
-  }, [friendRequests]);
-  
-  // 移除this effect，直接使用friendRequests
+  // 注释：已移除pendingFriendRequests相关useEffect以避免循环更新
+  // 直接使用friendRequests而不是维护单独的pendingFriendRequests状态
 
   // Connect to WebSocket server
   useEffect(() => {
@@ -589,7 +582,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       isLoadingGroups,
       isConnected,
       markMessagesAsRead,
-      pendingFriendRequests,
+      // 直接使用friendRequests而不是pendingFriendRequests
+      pendingFriendRequests: friendRequests || [],
       respondToFriendRequest,
       userGroups
     }}>
