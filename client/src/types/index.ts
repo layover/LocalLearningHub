@@ -27,7 +27,10 @@ export interface Message {
   content: string;
   createdAt: string;
   read: boolean;
-  messageType?: 'direct' | 'group';
+  messageType?: 'direct' | 'group' | 'file' | 'text';
+  fileUrl?: string | null;
+  fileType?: string | null;
+  fileName?: string | null;
 }
 
 export interface FriendRequest {

@@ -11,7 +11,12 @@ import {
   Settings,
   Users,
   Trash2,
-  X
+  X,
+  Paperclip,
+  File as FileIcon,
+  ImageIcon,
+  FileAudio,
+  FileVideo
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,6 +64,8 @@ export default function GroupChatArea() {
   const [potentialMembers, setPotentialMembers] = useState<Contact['contact'][]>([]);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [showMemberList, setShowMemberList] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileUploading, setFileUploading] = useState(false);
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -112,9 +119,87 @@ export default function GroupChatArea() {
     
     const currentUserMember = membersData.find(m => m.user.id === user.id);
     if (currentUserMember) {
-      setIsAdmin(currentUserMember.member.role === 'admin' || currentUserMember.member.role === 'owner');
+      // 使用字符串比较，避免类型问题
+      const role = currentUserMember.member.role;
+      setIsAdmin(role === 'admin' || role === 'owner');
     }
   }, [selectedGroup, user, membersData]);
+  
+  // 文件处理函数
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+  
+  // 获取文件类型对应的图标
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) {
+      return <ImageIcon className="h-4 w-4 inline-block mr-2" />;
+    } else if (fileType.startsWith('audio/')) {
+      return <FileAudio className="h-4 w-4 inline-block mr-2" />;
+    } else if (fileType.startsWith('video/')) {
+      return <FileVideo className="h-4 w-4 inline-block mr-2" />;
+    } else {
+      return <FileIcon className="h-4 w-4 inline-block mr-2" />;
+    }
+  };
+  
+  // 格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return bytes + ' B';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    else return (bytes / 1073741824).toFixed(1) + ' GB';
+  };
+  
+  // 获取附件图标
+  const getAttachmentIcon = (fileType?: string | null) => {
+    if (!fileType) return <FileIcon className="h-5 w-5" />;
+    
+    if (fileType.startsWith('image/')) {
+      return <ImageIcon className="h-5 w-5 text-blue-500" />;
+    } else if (fileType.startsWith('audio/')) {
+      return <FileAudio className="h-5 w-5 text-purple-500" />;
+    } else if (fileType.startsWith('video/')) {
+      return <FileVideo className="h-5 w-5 text-red-500" />;
+    } else if (fileType.includes('pdf')) {
+      return <FileIcon className="h-5 w-5 text-red-500" />;
+    } else if (fileType.includes('word') || fileType.includes('document')) {
+      return <FileIcon className="h-5 w-5 text-blue-500" />;
+    } else if (fileType.includes('excel') || fileType.includes('sheet')) {
+      return <FileIcon className="h-5 w-5 text-green-500" />;
+    } else {
+      return <FileIcon className="h-5 w-5 text-gray-500" />;
+    }
+  };
+  
+  // 获取文件类型的友好显示
+  const getFileTypeLabel = (fileType: string): string => {
+    const typeParts = fileType.split('/');
+    if (typeParts.length > 1) {
+      const mainType = typeParts[0];
+      const subType = typeParts[1].toUpperCase();
+      
+      switch (mainType) {
+        case 'image':
+          return `图片 (${subType})`;
+        case 'audio':
+          return `音频 (${subType})`;
+        case 'video':
+          return `视频 (${subType})`;
+        case 'application':
+          if (subType === 'PDF') return '文档 (PDF)';
+          else if (subType.includes('WORD')) return '文档 (WORD)';
+          else if (subType.includes('EXCEL')) return '表格 (EXCEL)';
+          else return `文件 (${subType})`;
+        default:
+          return `${mainType} (${subType})`;
+      }
+    }
+    return fileType;
+  };
   
   // 消息滚动到底部
   useEffect(() => {
@@ -142,24 +227,64 @@ export default function GroupChatArea() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!message.trim() || !selectedGroup || !user) return;
+    if ((!message.trim() && !selectedFile) || !selectedGroup || !user) return;
     
     setIsSending(true);
     
     try {
-      if (chatSendGroupMessage) {
-        await chatSendGroupMessage(message.trim(), selectedGroup.id);
+      // 处理文件上传
+      let fileUrl = null;
+      let fileType = null;
+      let fileName = null;
+      
+      if (selectedFile) {
+        setFileUploading(true);
+        
+        // 创建FormData对象来上传文件
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("groupId", selectedGroup.id.toString());
+        
+        // 上传文件
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error("文件上传失败");
+        }
+        
+        const uploadResult = await uploadResponse.json();
+        fileUrl = uploadResult.fileUrl;
+        fileType = selectedFile.type;
+        fileName = selectedFile.name;
+        
+        setFileUploading(false);
+      }
+      
+      // 构建消息内容
+      const messageContent = message.trim();
+      
+      // 发送消息
+      if (chatSendGroupMessage && !fileUrl) {
+        // 使用现有的发送方法发送纯文本消息
+        await chatSendGroupMessage(messageContent, selectedGroup.id);
       } else {
-        // 后备直接API调用
+        // 发送带有文件或者后备方法
         const response = await fetch(`/api/groups/${selectedGroup.id}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            content: message.trim(),
+            content: messageContent,
             senderId: user.id,
-            groupId: selectedGroup.id
+            groupId: selectedGroup.id,
+            fileUrl,
+            fileType,
+            fileName,
+            messageType: fileUrl ? 'file' : 'text'
           })
         });
         
@@ -171,8 +296,10 @@ export default function GroupChatArea() {
         queryClient.invalidateQueries({ queryKey: [`/api/groups/${selectedGroup.id}/messages`] });
       }
       
-      // 清空输入
+      // 清空输入和文件选择
       setMessage("");
+      setSelectedFile(null);
+      
     } catch (error: any) {
       toast({
         title: "发送失败",
@@ -181,6 +308,7 @@ export default function GroupChatArea() {
       });
     } finally {
       setIsSending(false);
+      setFileUploading(false);
     }
   };
   
@@ -537,7 +665,42 @@ export default function GroupChatArea() {
                                 ? 'bg-primary text-primary-foreground' 
                                 : 'bg-muted'
                             } p-3 rounded-lg`}>
-                              {msg.content}
+                              {/* 显示消息内容 */}
+                              {msg.content && <div className="mb-2">{msg.content}</div>}
+                              
+                              {/* 显示文件附件 */}
+                              {msg.fileUrl && (
+                                <div className="mt-1">
+                                  {msg.fileType?.startsWith('image/') ? (
+                                    // 图片文件直接显示
+                                    <div className="mt-2">
+                                      <img 
+                                        src={msg.fileUrl} 
+                                        alt={msg.fileName || "图片"}
+                                        className="max-w-full rounded-md max-h-[200px] object-contain"
+                                      />
+                                    </div>
+                                  ) : (
+                                    // 其他文件显示为链接
+                                    <a 
+                                      href={msg.fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-2 p-2 bg-background rounded-md"
+                                    >
+                                      {getAttachmentIcon(msg.fileType)}
+                                      <div className="flex-1 truncate">
+                                        <div className="text-sm font-medium">{msg.fileName || "文件下载"}</div>
+                                        {msg.fileType && (
+                                          <div className="text-xs text-muted-foreground">
+                                            {getFileTypeLabel(msg.fileType)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </a>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             <div className={`text-xs text-muted-foreground mt-1 ${
                               isOwnMessage ? 'text-right' : 'text-left'
@@ -565,20 +728,54 @@ export default function GroupChatArea() {
         </ScrollArea>
         
         {/* 输入区域 */}
-        <form onSubmit={handleSendMessage} className="p-4 border-t flex items-center gap-2">
-          <Input
-            placeholder="输入消息..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            className="flex-1"
-          />
-          <Button type="submit" disabled={!message.trim() || isSending}>
-            {isSending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+        <form onSubmit={handleSendMessage} className="p-4 border-t">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                placeholder="输入消息..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                className="w-full pr-10"
+              />
+              <label htmlFor="file-upload-group" className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground">
+                <Paperclip className="h-5 w-5" />
+              </label>
+              <input 
+                id="file-upload-group" 
+                type="file" 
+                className="hidden" 
+                onChange={handleFileChange}
+              />
+            </div>
+            <Button type="submit" disabled={(!message.trim() && !selectedFile) || isSending || fileUploading}>
+              {isSending || fileUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          
+          {/* 附件预览区域 */}
+          {selectedFile && (
+            <div className="mt-2 p-2 bg-muted rounded-md flex items-center gap-2">
+              <div className="flex-1 truncate">
+                {getFileIcon(selectedFile.type)}
+                <span className="text-sm">{selectedFile.name}</span>
+                <span className="text-xs text-muted-foreground ml-2">
+                  ({formatFileSize(selectedFile.size)})
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setSelectedFile(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </form>
       </div>
       
