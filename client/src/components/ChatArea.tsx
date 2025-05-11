@@ -295,6 +295,9 @@ export default function ChatArea() {
             {group.messages.map((message, messageIndex) => {
               const isSentByMe = message.senderId === user?.id;
               
+              // 调试日志，输出消息详细信息
+              console.log("渲染消息:", message.id, "文件URL:", message.fileUrl, "文件类型:", message.fileType, "消息类型:", message.messageType);
+              
               return (
                 <div 
                   key={message.id} 

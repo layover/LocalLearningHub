@@ -479,6 +479,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const messages = await storage.getMessages(userId, contactId);
     
+    // 检查是否有文件类型的消息并输出其信息
+    const fileMessages = messages.filter(msg => msg.fileUrl);
+    if (fileMessages.length > 0) {
+      console.log(`找到 ${fileMessages.length} 条带有文件附件的消息:`, fileMessages);
+    } else {
+      console.log('未找到带有文件附件的消息');
+    }
+    
     // Mark messages from this contact as read
     await storage.markMessagesAsRead(userId, contactId);
     
