@@ -875,20 +875,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const groupId = parseInt(req.params.groupId);
       const userId = req.user!.id;
-      const { content } = req.body;
+      const { content, fileUrl, fileType, fileName, messageType = 'text' } = req.body;
       
-      if (!content) {
+      // 如果是文本消息，内容不能为空；如果是文件消息，至少需要fileUrl
+      if ((!content || content.trim() === '') && (!fileUrl || messageType !== 'file')) {
         return res.status(400).json({ message: "消息内容是必需的" });
       }
       
-      const message = await storage.createGroupMessage(userId, groupId, content);
+      // 创建消息
+      const message = await storage.createMessage({
+        senderId: userId,
+        receiverId: null,
+        groupId: groupId,
+        content: content || '',
+        read: false,
+        messageType: messageType || 'text',
+        fileUrl,
+        fileType,
+        fileName
+      });
       
       // 广播消息给群组所有成员
       await broadcastToGroupMembers(groupId, {
         type: 'message',
         message: {
           ...message,
-          messageType: 'group'
+          messageType: messageType || 'group'
         }
       });
       
