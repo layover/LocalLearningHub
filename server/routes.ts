@@ -26,6 +26,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
   
+  // 为上传的文件提供静态文件服务
+  app.use('/uploads', express.static(uploadDir));
+  
   // 配置multer用于文件上传
   const fileStorage = multer.diskStorage({
     destination: (req, file, cb) => {
