@@ -18,7 +18,7 @@ interface ChatContextType {
   isLoading: boolean;
   isConnected: boolean;
   markMessagesAsRead: (contactId: number) => void;
-  // 直接使用friendRequests而不是pendingFriendRequests
+  pendingFriendRequests: FriendRequest[];
   respondToFriendRequest: (requestId: number, status: 'accepted' | 'rejected') => void;
   userGroups: Group[];
   isLoadingGroups: boolean;
@@ -336,7 +336,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           ...prev,
           [contactId]: data.map(msg => ({
             ...msg,
-            createdAt: new Date(msg.createdAt)
+            // 保持createdAt为字符串类型，不转换为Date对象
+            createdAt: msg.createdAt 
           }))
         }));
         
@@ -533,7 +534,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       console.log("服务器响应:", result);
       
       // Update local state - 无论本地列表是否包含此请求，都尝试删除
-      setPendingFriendRequests(prev => prev.filter(req => req.id !== requestId));
+      // 由于我们现在直接使用friendRequests，这个过滤操作不再需要
+      // 响应后会自动通过API刷新数据
       
       // 强制重新获取好友请求列表
       queryClient.invalidateQueries({ queryKey: ['/api/friend-requests/pending'] });
@@ -582,8 +584,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       isLoadingGroups,
       isConnected,
       markMessagesAsRead,
-      // 直接使用friendRequests而不是pendingFriendRequests
-      pendingFriendRequests: friendRequests || [],
+      pendingFriendRequests: (friendRequests || []) as FriendRequest[],
       respondToFriendRequest,
       userGroups
     }}>
