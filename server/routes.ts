@@ -133,22 +133,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
               break;
             } else {
               // 处理私聊消息
-              const validatedMessage = insertMessageSchema.parse({
+              console.log("处理私聊消息:", message.message);
+              
+              // 准备消息数据（包括文件附件信息）
+              const messageData: any = {
                 senderId: message.message.senderId,
                 receiverId: message.message.receiverId,
-                content: message.message.content
-              });
+                content: message.message.content,
+                messageType: message.message.messageType || 'direct'
+              };
+              
+              // 添加文件附件信息（如果有）
+              if (message.message.fileUrl) {
+                messageData.fileUrl = message.message.fileUrl;
+                messageData.fileType = message.message.fileType;
+                messageData.fileName = message.message.fileName;
+              }
+              
+              const validatedMessage = insertMessageSchema.parse(messageData);
               
               // Store message
               const savedMessage = await storage.createMessage(validatedMessage);
               
               // Send message to recipient if online
-              const recipientSocket = storage.getConnection(validatedMessage.receiverId);
-              if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
-                recipientSocket.send(JSON.stringify({
-                  type: 'message',
-                  message: savedMessage
-                }));
+              if (validatedMessage.receiverId) {
+                const recipientSocket = storage.getConnection(validatedMessage.receiverId);
+                if (recipientSocket && recipientSocket.readyState === WebSocket.OPEN) {
+                  recipientSocket.send(JSON.stringify({
+                    type: 'message',
+                    message: savedMessage
+                  }));
+                }
               }
               
               // Send confirmation back to sender
@@ -156,6 +171,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 type: 'message',
                 message: savedMessage
               }));
+              
+              // 打印已保存的消息信息，用于调试
+              console.log("保存的消息:", JSON.stringify(savedMessage, null, 2));
             }
             break;
             

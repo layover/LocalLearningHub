@@ -267,10 +267,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const result = await db.insert(messages).values({
+    console.log(`创建消息: 从 ${insertMessage.senderId} 到 ${insertMessage.receiverId} ${insertMessage.fileUrl ? '(带附件)' : ''}`);
+    
+    // 构建消息数据，包括可选的文件附件字段
+    const messageData: any = {
       ...insertMessage,
-      read: false,
-    }).returning();
+      read: false
+    };
+    
+    // 确保messageType字段有值
+    if (!messageData.messageType) {
+      messageData.messageType = messageData.fileUrl ? 'file' : 'direct';
+    }
+    
+    const result = await db.insert(messages).values(messageData).returning();
     return result[0];
   }
 

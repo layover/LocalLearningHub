@@ -94,11 +94,12 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true,
   createdAt: true,
   read: true,
-  messageType: true,
-  groupId: true,
-  fileUrl: true,
-  fileType: true,
-  fileName: true,
+}).extend({
+  messageType: z.string().optional(),
+  groupId: z.number().optional().nullable(),
+  fileUrl: z.string().optional().nullable(),
+  fileType: z.string().optional().nullable(),
+  fileName: z.string().optional().nullable(),
 });
 
 export const insertFriendRequestSchema = createInsertSchema(friendRequests).omit({
